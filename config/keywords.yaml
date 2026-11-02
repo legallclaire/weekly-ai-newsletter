@@ -1,0 +1,67 @@
+# Paper pre-filter: weight added when a term appears in the abstract,
+# multiplied by title_weight when it appears in the title. Plurals match too.
+papers:
+  title_weight: 2.0
+  positive:
+    # Agents
+    agent: 3
+    agentic: 3
+    multi-agent: 3
+    tool use: 2
+    tool calling: 2
+    planning: 1
+    # Inference and deployment
+    inference: 2
+    serving: 3
+    speculative decoding: 3
+    quantization: 3
+    kv cache: 3
+    kv-cache: 3
+    latency: 1
+    throughput: 1
+    distillation: 1
+    deployment: 2
+    on-device: 1
+    # RAG and retrieval
+    retrieval-augmented: 3
+    rag: 3
+    retrieval: 2
+    reranking: 2
+    embedding: 1
+    # Evaluation
+    evaluation: 2
+    benchmark: 1
+    contamination: 3
+    llm-as-a-judge: 3
+    reward model: 2
+    # LLMs and general ML
+    large language model: 1
+    llm: 1
+    language model: 1
+    in-context learning: 2
+    scaling law: 3
+    interpretability: 2
+    reinforcement learning: 1
+    fine-tuning: 1
+    # ML-related statistics
+    uncertainty quantification: 3
+    conformal prediction: 3
+    calibration: 2
+    bayesian: 2
+    causal inference: 3
+    causal: 1
+    hypothesis testing: 2
+  negative:
+    medical imaging: 3
+    remote sensing: 3
+    radiology: 2
+    autonomous driving: 2
+    point cloud: 2
+    hyperspectral: 3
+
+# Trending repos: kept when name/description matches an include term;
+# dropped when the repo name contains an exclude substring.
+repos:
+  include: [llm, agent, agentic, rag, inference, mcp, machine learning, deep learning,
+            transformer, embedding, claude, gpt, language model, diffusion, ml, ai]
+  exclude: [awesome, prompts, tutorial, course, interview, roadmap, cheatsheet]

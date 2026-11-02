@@ -1,0 +1,34 @@
+# RSS/Atom feeds fetched every week; items outside the 7-day window are ignored.
+news:
+  - name: OpenAI
+    url: https://openai.com/news/rss.xml
+  - name: Google DeepMind
+    url: https://deepmind.google/blog/rss.xml
+  - name: Google AI
+    url: https://blog.google/technology/ai/rss/
+  - name: Hugging Face
+    url: https://huggingface.co/blog/feed.xml
+  # Anthropic has no official feed; this one is community-maintained.
+  - name: Anthropic
+    url: https://raw.githubusercontent.com/Olshansk/rss-feeds/main/feeds/feed_anthropic_news.xml
+  - name: Simon Willison
+    url: https://simonwillison.net/atom/everything/
+  - name: Import AI
+    url: https://importai.substack.com/feed
+  - name: The Batch
+    url: https://www.deeplearning.ai/the-batch/feed/
+  - name: MIT Technology Review
+    url: https://www.technologyreview.com/topic/artificial-intelligence/feed
+
+# AI coding tools: every notable release is covered, grouped by tool.
+devtools:
+  - name: Claude Code
+    url: https://github.com/anthropics/claude-code/releases.atom
+  - name: OpenAI Codex
+    url: https://github.com/openai/codex/releases.atom
+  - name: Gemini CLI
+    url: https://github.com/google-gemini/gemini-cli/releases.atom
+  - name: GitHub Changelog
+    url: https://github.blog/changelog/feed/
+  - name: Cursor
+    url: https://cursor.com/changelog/rss.xml

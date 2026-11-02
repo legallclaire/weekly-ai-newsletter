@@ -1,0 +1,31 @@
+# Newsletter text language: fr or en (code and logs are always English).
+language: fr
+
+llm:
+  model: claude-sonnet-5-5
+  max_tokens: 8192
+
+papers:
+  categories: [cs.LG, cs.AI, cs.CL, stat.ML, cs.IR, cs.MA, cs.SE, cs.DC]
+  # arXiv announces submissions with a delay; shift the paper window back.
+  window_lag_days: 2
+  prefilter_size: 50
+  batch_size: 10
+  min_total: 45      # out of 70
+  min_novelty: 6     # out of 10
+  max_selected: 3
+
+news:
+  max_items: 6
+  max_candidates: 80
+
+devtools:
+  max_candidates: 60
+
+repos:
+  max_items: 5
+  repeat_after_weeks: 8
+  trending_languages: ["", python]   # "" = all languages
+
+history_path: state/history.json
+archive_dir: archive
