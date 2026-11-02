@@ -11,6 +11,8 @@ from weekly_ai_newsletter.prompts import LANGUAGE_NAMES, render_prompt
 from weekly_ai_newsletter.services.text import truncate
 
 CONTENT_CHARS = 1500
+# Tools the reader does not use: only their single most important change is kept.
+SECONDARY_MAX_CHANGES = 1
 
 
 class ChangePick(BaseModel):
@@ -28,14 +30,22 @@ class DevToolsSelection(BaseModel):
 
 
 class DevToolsCurator:
-    def __init__(self, llm: LLMClient, *, language: str) -> None:
+    def __init__(
+        self, llm: LLMClient, *, language: str, secondary_tools: Sequence[str] = ()
+    ) -> None:
         self._llm = llm
         self._language = language
+        self._secondary_tools = list(secondary_tools)
 
     def curate(self, items: Sequence[FeedItem]) -> list[DevToolGroup]:
         if not items:
             return []
-        system = render_prompt("curate_devtools.md.j2", language=LANGUAGE_NAMES[self._language])
+        system = render_prompt(
+            "curate_devtools.md.j2",
+            language=LANGUAGE_NAMES[self._language],
+            secondary_tools=self._secondary_tools,
+        )
+        secondary = {tool.casefold() for tool in self._secondary_tools}
         prompt = json.dumps(
             [
                 {
@@ -54,7 +64,10 @@ class DevToolsCurator:
         used: set[int] = set()
         for group in answer.groups:
             changes: list[DevToolChange] = []
+            limit = SECONDARY_MAX_CHANGES if group.tool.casefold() in secondary else None
             for pick in group.changes:
+                if limit is not None and len(changes) >= limit:
+                    break
                 if not 0 <= pick.index < len(items) or pick.index in used:
                     continue
                 used.add(pick.index)

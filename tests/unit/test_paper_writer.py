@@ -55,3 +55,22 @@ def test_paper_without_writeup_is_dropped_not_the_whole_section() -> None:
     )
     papers = PaperWriter(llm, language="en").write(selected)
     assert [p.paper.arxiv_id for p in papers] == ["2610.00002"]
+
+
+def test_enterprise_use_is_carried_when_the_writer_gives_one() -> None:
+    llm = FakeLLM(
+        {
+            PaperWriteupBatch: PaperWriteupBatch(
+                writeups=[
+                    PaperWriteup(
+                        arxiv_id="2610.00001",
+                        summary="S.",
+                        why_selected="W.",
+                        enterprise_use="Pour un RAG interne.",
+                    )
+                ]
+            )
+        }
+    )
+    [paper] = PaperWriter(llm, language="fr").write(SELECTED)
+    assert paper.enterprise_use == "Pour un RAG interne."

@@ -18,6 +18,7 @@ class PaperWriteup(BaseModel):
     arxiv_id: str
     summary: str
     why_selected: str
+    enterprise_use: str = ""
 
 
 class PaperWriteupBatch(BaseModel):
@@ -60,6 +61,7 @@ class PaperWriter:
                 score=c.score,
                 summary=writeups[c.paper.arxiv_id].summary,
                 why_selected=writeups[c.paper.arxiv_id].why_selected,
+                enterprise_use=writeups[c.paper.arxiv_id].enterprise_use,
             )
             for c in selected
             if c.paper.arxiv_id in writeups

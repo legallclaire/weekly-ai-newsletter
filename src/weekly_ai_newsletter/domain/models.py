@@ -56,6 +56,7 @@ class SelectedPaper:
     score: PaperScore
     summary: str
     why_selected: str
+    enterprise_use: str = ""
 
 
 @dataclass(frozen=True)

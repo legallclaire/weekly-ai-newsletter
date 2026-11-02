@@ -38,7 +38,10 @@
 - {{ item.paper.title }}
   {{ item.paper.url }}
   {{ item.summary }}
-  {{ labels.why_selected }} : {{ item.why_selected }}
+  {{ labels.why_selected }} {{ item.why_selected }}
+{% if item.enterprise_use %}
+  {{ labels.enterprise_use }} {{ item.enterprise_use }}
+{% endif %}
   {{ labels.relevance }} {{ s.relevance }} · {{ labels.novelty }} {{ s.novelty }} · {{ labels.evidence }} {{ s.evidence }} · {{ labels.depth }} {{ s.depth }} · {{ labels.practical_utility }} {{ s.practical_utility }} → {{ s.total }}/{{ max_total }}
 
 {% endfor %}
@@ -48,7 +51,7 @@
 
 {% call section_body(newsletter.repos, labels.empty) %}
 {% for item in newsletter.repos.items %}
-- {{ item.repo.full_name }} (+{{ "{:,}".format(item.repo.stars_this_week) }} {{ labels.stars_this_week }})
+- {{ item.repo.full_name }} (+{{ number(item.repo.stars_this_week) }} {{ labels.stars_this_week }})
   {{ item.repo.url }}
   {{ item.why_interesting }}
 

@@ -33,3 +33,23 @@ def test_drops_groups_without_valid_changes() -> None:
     )
     curator = DevToolsCurator(FakeLLM({DevToolsSelection: selection}), language="en")
     assert curator.curate(ITEMS) == []
+
+
+def test_secondary_tool_keeps_at_most_one_major_change() -> None:
+    items = [
+        make_feed_item(f"https://gh.example/cl/{n}", title=f"Copilot {n}", source="GitHub")
+        for n in range(3)
+    ]
+    selection = DevToolsSelection(
+        groups=[
+            ToolGroup(
+                tool="github copilot",
+                changes=[ChangePick(index=n, summary=f"Change {n}.") for n in range(3)],
+            )
+        ]
+    )
+    llm = FakeLLM({DevToolsSelection: selection})
+    curator = DevToolsCurator(llm, language="en", secondary_tools=["GitHub Copilot"])
+    [group] = curator.curate(items)
+    assert [c.title for c in group.changes] == ["Copilot 0"]
+    assert "GitHub Copilot" in llm.calls[0][0]

@@ -21,6 +21,8 @@ news:
 
 devtools:
   max_candidates: 60
+  # Tools you do not use: shown only for a major announcement, one entry at most.
+  secondary_tools: ["GitHub Copilot"]
 
 repos:
   max_items: 5

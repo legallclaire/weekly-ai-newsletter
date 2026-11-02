@@ -43,6 +43,7 @@ class NewsSettings(_Strict):
 
 class DevToolsSettings(_Strict):
     max_candidates: int = Field(default=60, gt=0)
+    secondary_tools: list[str] = Field(default_factory=list)
 
 
 class RepoSettings(_Strict):

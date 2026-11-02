@@ -110,7 +110,11 @@ class NewsletterPipeline:
         self._news_curator = NewsCurator(
             deps.llm, language=settings.language, max_items=settings.news.max_items
         )
-        self._devtools_curator = DevToolsCurator(deps.llm, language=settings.language)
+        self._devtools_curator = DevToolsCurator(
+            deps.llm,
+            language=settings.language,
+            secondary_tools=settings.devtools.secondary_tools,
+        )
         self._repo_curator = RepoCurator(
             deps.llm, language=settings.language, max_items=settings.repos.max_items
         )

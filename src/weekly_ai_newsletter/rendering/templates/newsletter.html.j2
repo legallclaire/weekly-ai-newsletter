@@ -26,7 +26,7 @@
 <div style="margin:0 0 16px;">
 <a href="{{ item.url }}" style="color:#4338ca;font-weight:600;text-decoration:none;">{{ item.title }}</a>
 <span style="color:#71717a;font-size:13px;"> · {{ item.source }}</span>
-<p style="margin:4px 0 0;">{{ item.summary }}</p>
+<p style="margin:4px 0 0;">{{ item.summary | code }}</p>
 </div>
 {% endfor %}
 {% endcall %}
@@ -37,7 +37,7 @@
 <h3 style="font-size:15px;margin:16px 0 6px;">{{ group.tool }}</h3>
 <ul style="margin:0;padding-left:20px;">
 {% for change in group.changes %}
-<li style="margin:0 0 6px;"><a href="{{ change.url }}" style="color:#4338ca;">{{ change.title }}</a> — {{ change.summary }}</li>
+<li style="margin:0 0 6px;"><a href="{{ change.url }}" style="color:#4338ca;">{{ change.title }}</a> — {{ change.summary | code }}</li>
 {% endfor %}
 </ul>
 {% endfor %}
@@ -50,8 +50,9 @@
 <div style="margin:0 0 24px;">
 <a href="{{ item.paper.url }}" style="color:#4338ca;font-weight:600;font-size:16px;text-decoration:none;">{{ item.paper.title }}</a>
 <p style="margin:2px 0 8px;color:#71717a;font-size:13px;">{{ item.paper.authors[:3] | join(", ") }}{% if item.paper.authors | length > 3 %} et al.{% endif %}</p>
-<p style="margin:0 0 8px;">{{ item.summary }}</p>
-<p style="margin:0 0 8px;"><strong>{{ labels.why_selected }} :</strong> {{ item.why_selected }}</p>
+<p style="margin:0 0 8px;">{{ item.summary | code }}</p>
+<p style="margin:0 0 8px;"><strong>{{ labels.why_selected }}</strong> {{ item.why_selected | code }}</p>
+{% if item.enterprise_use %}<p style="margin:0 0 8px;"><strong>{{ labels.enterprise_use }}</strong> {{ item.enterprise_use | code }}</p>{% endif %}
 <p style="margin:0;font-size:12px;color:#52525b;background:#f4f4f5;border-radius:6px;padding:6px 10px;">
 {{ labels.relevance }} {{ s.relevance }} · {{ labels.novelty }} {{ s.novelty }} · {{ labels.evidence }} {{ s.evidence }} · {{ labels.depth }} {{ s.depth }} · {{ labels.practical_utility }} {{ s.practical_utility }} → <strong>{{ s.total }}/{{ max_total }}</strong>
 </p>
@@ -64,9 +65,9 @@
 {% for item in newsletter.repos.items %}
 <div style="margin:0 0 14px;">
 <a href="{{ item.repo.url }}" style="color:#4338ca;font-weight:600;text-decoration:none;">{{ item.repo.full_name }}</a>
-<span style="color:#71717a;font-size:13px;"> · ★ +{{ "{:,}".format(item.repo.stars_this_week) }} {{ labels.stars_this_week }}{% if item.repo.language %} · {{ item.repo.language }}{% endif %}</span>
+<span style="color:#71717a;font-size:13px;"> · ★ +{{ number(item.repo.stars_this_week) }} {{ labels.stars_this_week }}{% if item.repo.language %} · {{ item.repo.language }}{% endif %}</span>
 {% if item.repo.description %}<p style="margin:4px 0 0;color:#3f3f46;">{{ item.repo.description }}</p>{% endif %}
-<p style="margin:4px 0 0;">{{ item.why_interesting }}</p>
+<p style="margin:4px 0 0;">{{ item.why_interesting | code }}</p>
 </div>
 {% endfor %}
 {% endcall %}

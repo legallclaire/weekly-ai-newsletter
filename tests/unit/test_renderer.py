@@ -58,7 +58,7 @@ def test_html_contains_every_section_with_links_and_score_breakdown() -> None:
         "Pertinence 9",
         "55/70",
         "https://github.com/acme/agent-kit",
-        "2,345",
+        "2\u202f345",
     ):
         assert expected in html, expected
 
@@ -83,3 +83,41 @@ def test_english_labels() -> None:
     rendered = NewsletterRenderer().render(newsletter(language="en"))
     assert rendered.subject == "Weekly AI digest — November 4, 2026"
     assert "Research papers" in rendered.html and "Relevance 9" in rendered.text
+
+
+def test_enterprise_use_is_shown_only_when_present() -> None:
+    with_use = SelectedPaper(
+        paper=PAPER.paper,
+        score=PAPER.score,
+        summary=PAPER.summary,
+        why_selected=PAPER.why_selected,
+        enterprise_use="Réduit le coût d'un assistant interne.",
+    )
+    shown = NewsletterRenderer().render(newsletter(papers=Section.ok([with_use])))
+    assert "En entreprise :" in shown.text
+    assert "Réduit le coût d" in shown.html
+    hidden = NewsletterRenderer().render(newsletter())
+    assert "En entreprise" not in hidden.html + hidden.text
+
+
+def test_numbers_follow_the_language_convention() -> None:
+    assert "+2,345 stars this week" in NewsletterRenderer().render(newsletter("en")).text
+    assert "+2\u202f345 étoiles cette semaine" in NewsletterRenderer().render(newsletter()).text
+
+
+def test_inline_code_in_summaries_renders_as_code_in_html() -> None:
+    change = DevToolChange("v1", "https://gh.example/r", "Adds `/security-review` <now>.")
+    base = newsletter()
+    rendered = NewsletterRenderer().render(
+        Newsletter(
+            issue_date=base.issue_date,
+            language="fr",
+            news=base.news,
+            devtools=Section.ok([DevToolGroup("Copilot", (change,))]),
+            papers=base.papers,
+            repos=base.repos,
+        )
+    )
+    assert "<code" in rendered.html and "/security-review</code>" in rendered.html
+    assert "`" not in rendered.html
+    assert "&lt;now&gt;" in rendered.html
