@@ -61,3 +61,12 @@ def test_secrets_are_not_exposed_in_repr() -> None:
     assert "sk-secret" not in repr(secrets) and "re-secret" not in repr(secrets)
     assert secrets.email is not None
     assert secrets.email.resend_api_key.get_secret_value() == "re-secret"
+
+
+def test_github_token_is_optional() -> None:
+    assert Secrets.from_env({"ANTHROPIC_API_KEY": "k"}, require_email=False).github_token is None
+    secrets = Secrets.from_env(
+        {"ANTHROPIC_API_KEY": "k", "GITHUB_TOKEN": "gh"}, require_email=False
+    )
+    assert secrets.github_token is not None
+    assert secrets.github_token.get_secret_value() == "gh"

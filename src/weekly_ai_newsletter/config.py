@@ -97,6 +97,7 @@ class EmailSecrets(_Strict):
 class Secrets(_Strict):
     anthropic_api_key: SecretStr
     email: EmailSecrets | None
+    github_token: SecretStr | None = None  # optional: raises GitHub API rate limits
 
     @classmethod
     def from_env(cls, env: Mapping[str, str], *, require_email: bool) -> Secrets:
@@ -112,7 +113,12 @@ class Secrets(_Strict):
                 sender_email=env["SENDER_EMAIL"],
                 recipient_email=env["RECIPIENT_EMAIL"],
             )
-        return cls(anthropic_api_key=SecretStr(env["ANTHROPIC_API_KEY"]), email=email)
+        github_token = SecretStr(env["GITHUB_TOKEN"]) if env.get("GITHUB_TOKEN") else None
+        return cls(
+            anthropic_api_key=SecretStr(env["ANTHROPIC_API_KEY"]),
+            email=email,
+            github_token=github_token,
+        )
 
 
 @dataclass(frozen=True)

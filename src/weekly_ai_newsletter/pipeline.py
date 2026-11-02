@@ -1,0 +1,270 @@
+"""Orchestration: build four independent sections, render, then publish."""
+
+from __future__ import annotations
+
+import logging
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass, field
+from datetime import date, timedelta
+
+from weekly_ai_newsletter.config import AppConfig, FeedConfig
+from weekly_ai_newsletter.domain.errors import LLMOutputError, PipelineError, SourceError
+from weekly_ai_newsletter.domain.history import History, HistoryKind
+from weekly_ai_newsletter.domain.models import (
+    CuratedRepo,
+    DevToolGroup,
+    FeedItem,
+    NewsItem,
+    OutgoingEmail,
+    SelectedPaper,
+)
+from weekly_ai_newsletter.domain.newsletter import Newsletter, Section
+from weekly_ai_newsletter.domain.window import TimeWindow
+from weekly_ai_newsletter.ports import (
+    EmailSender,
+    FeedSource,
+    HistoryStore,
+    LLMClient,
+    PaperSource,
+    TrendingSource,
+)
+from weekly_ai_newsletter.rendering.renderer import NewsletterRenderer, RenderedNewsletter
+from weekly_ai_newsletter.services.dedup import drop_sent, unique_by
+from weekly_ai_newsletter.services.devtools_curator import DevToolsCurator
+from weekly_ai_newsletter.services.keyword_filter import KeywordFilter
+from weekly_ai_newsletter.services.news_curator import NewsCurator
+from weekly_ai_newsletter.services.paper_scorer import PaperScorer
+from weekly_ai_newsletter.services.paper_selection import SelectionRules, select_papers
+from weekly_ai_newsletter.services.paper_writer import PaperWriter
+from weekly_ai_newsletter.services.repo_curator import RepoCurator
+from weekly_ai_newsletter.services.repo_filter import RepoRuleFilter
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class Dependencies:
+    papers: PaperSource
+    feeds: FeedSource
+    trending: TrendingSource
+    llm: LLMClient
+    history: HistoryStore
+
+
+@dataclass(frozen=True)
+class Delivery:
+    sender: EmailSender
+    from_address: str
+    to_address: str
+
+
+@dataclass
+class RunReport:
+    issue_date: date
+    stages: dict[str, str] = field(default_factory=dict)
+    failures: dict[str, str] = field(default_factory=dict)
+    warnings: list[str] = field(default_factory=list)
+
+    def to_markdown(self) -> str:
+        lines = [
+            f"## Newsletter {self.issue_date.isoformat()}",
+            "",
+            "| Section | Funnel |",
+            "|---|---|",
+        ]
+        lines += [f"| {name} | {funnel} |" for name, funnel in self.stages.items()]
+        if self.failures:
+            lines += ["", "### Unavailable sections", ""]
+            lines += [f"- **{name}**: {error}" for name, error in self.failures.items()]
+        if self.warnings:
+            lines += ["", "### Warnings", ""]
+            lines += [f"- {warning}" for warning in self.warnings]
+        return "\n".join(lines) + "\n"
+
+
+@dataclass(frozen=True)
+class BuildResult:
+    newsletter: Newsletter
+    rendered: RenderedNewsletter
+    report: RunReport
+
+
+class NewsletterPipeline:
+    def __init__(
+        self,
+        config: AppConfig,
+        deps: Dependencies,
+        *,
+        delivery: Delivery | None = None,
+        renderer: NewsletterRenderer | None = None,
+    ) -> None:
+        settings = config.settings
+        self._config = config
+        self._deps = deps
+        self._delivery = delivery
+        self._renderer = renderer or NewsletterRenderer()
+        self._keyword_filter = KeywordFilter(config.keywords.papers)
+        self._repo_filter = RepoRuleFilter(config.keywords.repos)
+        self._scorer = PaperScorer(deps.llm, batch_size=settings.papers.batch_size)
+        self._writer = PaperWriter(deps.llm, language=settings.language)
+        self._news_curator = NewsCurator(
+            deps.llm, language=settings.language, max_items=settings.news.max_items
+        )
+        self._devtools_curator = DevToolsCurator(deps.llm, language=settings.language)
+        self._repo_curator = RepoCurator(
+            deps.llm, language=settings.language, max_items=settings.repos.max_items
+        )
+        self._rules = SelectionRules(
+            min_total=settings.papers.min_total,
+            min_novelty=settings.papers.min_novelty,
+            max_selected=settings.papers.max_selected,
+        )
+
+    def build(self, run_date: date) -> BuildResult:
+        history = self._deps.history.load()
+        report = RunReport(issue_date=run_date)
+        window = TimeWindow.week_before(run_date)
+        newsletter = Newsletter(
+            issue_date=run_date,
+            language=self._config.settings.language,
+            news=self._section("news", report, lambda: self._news(window, history, report)),
+            devtools=self._section(
+                "devtools", report, lambda: self._devtools(window, history, report)
+            ),
+            papers=self._section("papers", report, lambda: self._papers(run_date, history, report)),
+            repos=self._section("repos", report, lambda: self._repos(run_date, history, report)),
+        )
+        if newsletter.all_unavailable:
+            raise PipelineError("every section failed; refusing to send an empty newsletter")
+        return BuildResult(newsletter, self._renderer.render(newsletter), report)
+
+    def publish(self, result: BuildResult) -> None:
+        if self._delivery is None:
+            raise PipelineError("email delivery is not configured")
+        newsletter = result.newsletter
+        self._delivery.sender.send(
+            OutgoingEmail(
+                sender=self._delivery.from_address,
+                recipient=self._delivery.to_address,
+                subject=result.rendered.subject,
+                html=result.rendered.html,
+                text=result.rendered.text,
+                idempotency_key=f"weekly-ai-newsletter-{newsletter.issue_date.isoformat()}",
+            )
+        )
+        archive_dir = self._config.settings.archive_dir
+        archive_dir.mkdir(parents=True, exist_ok=True)
+        archive_path = archive_dir / f"{newsletter.issue_date.isoformat()}.html"
+        archive_path.write_text(result.rendered.html, encoding="utf-8")
+        history = self._deps.history.load()
+        _record_sent(history, newsletter)
+        self._deps.history.save(history)
+
+    def _section[T](self, name: str, report: RunReport, build: Callable[[], list[T]]) -> Section[T]:
+        try:
+            return Section.ok(build())
+        except Exception as exc:  # a broken section must never sink the whole newsletter
+            logger.exception("Section %s failed", name)
+            report.failures[name] = f"{type(exc).__name__}: {exc}"
+            return Section.unavailable(str(exc))
+
+    def _collect_feeds(
+        self, feeds: Sequence[FeedConfig], window: TimeWindow, report: RunReport
+    ) -> list[FeedItem]:
+        items: list[FeedItem] = []
+        failed = 0
+        for feed in feeds:
+            try:
+                items.extend(self._deps.feeds.fetch(feed.name, feed.url, window))
+            except Exception as exc:  # one broken feed must not hide the others
+                failed += 1
+                logger.warning("Feed %s (%s) failed: %s", feed.name, feed.url, exc)
+                report.warnings.append(f"feed {feed.name} failed: {exc}")
+        if feeds and failed == len(feeds):
+            raise SourceError("every feed of this section failed")
+        return items
+
+    def _news(self, window: TimeWindow, history: History, report: RunReport) -> list[NewsItem]:
+        settings = self._config.settings.news
+        fetched = self._collect_feeds(self._config.sources.news, window, report)
+        fresh = drop_sent(
+            unique_by(fetched, key=lambda i: i.url),
+            key=lambda i: i.url,
+            history=history,
+            kind=HistoryKind.NEWS,
+        )
+        fresh.sort(key=lambda i: i.published, reverse=True)
+        candidates = fresh[: settings.max_candidates]
+        curated = self._news_curator.curate(candidates)
+        report.stages["news"] = (
+            f"{len(fetched)} fetched -> {len(candidates)} candidates -> {len(curated)} selected"
+        )
+        return curated
+
+    def _devtools(
+        self, window: TimeWindow, history: History, report: RunReport
+    ) -> list[DevToolGroup]:
+        settings = self._config.settings.devtools
+        fetched = self._collect_feeds(self._config.sources.devtools, window, report)
+        fresh = drop_sent(
+            unique_by(fetched, key=lambda i: i.url),
+            key=lambda i: i.url,
+            history=history,
+            kind=HistoryKind.DEVTOOL,
+        )
+        fresh.sort(key=lambda i: i.published, reverse=True)
+        candidates = fresh[: settings.max_candidates]
+        groups = self._devtools_curator.curate(candidates)
+        changes = sum(len(group.changes) for group in groups)
+        report.stages["devtools"] = (
+            f"{len(fetched)} fetched -> {len(candidates)} candidates -> "
+            f"{changes} changes in {len(groups)} tools"
+        )
+        return groups
+
+    def _papers(self, run_date: date, history: History, report: RunReport) -> list[SelectedPaper]:
+        settings = self._config.settings.papers
+        window = TimeWindow.week_before(run_date, lag_days=settings.window_lag_days)
+        fetched = self._deps.papers.fetch(settings.categories, window)
+        fresh = drop_sent(
+            fetched, key=lambda p: p.arxiv_id, history=history, kind=HistoryKind.PAPER
+        )
+        shortlisted = self._keyword_filter.top(fresh, settings.prefilter_size)
+        scored = self._scorer.score(shortlisted)
+        if shortlisted and not scored:
+            raise LLMOutputError("no paper could be scored")
+        written = self._writer.write(select_papers(scored, self._rules))
+        report.stages["papers"] = (
+            f"{len(fetched)} fetched -> {len(shortlisted)} shortlisted -> "
+            f"{len(scored)} scored -> {len(written)} selected"
+        )
+        return written
+
+    def _repos(self, run_date: date, history: History, report: RunReport) -> list[CuratedRepo]:
+        settings = self._config.settings.repos
+        fetched = self._deps.trending.fetch_weekly()
+        relevant = self._repo_filter.apply(fetched)
+        fresh = drop_sent(
+            relevant,
+            key=lambda r: r.full_name,
+            history=history,
+            kind=HistoryKind.REPO,
+            since=run_date - timedelta(weeks=settings.repeat_after_weeks),
+        )
+        curated = self._repo_curator.curate(fresh)
+        report.stages["repos"] = (
+            f"{len(fetched)} trending -> {len(fresh)} relevant -> {len(curated)} selected"
+        )
+        return curated
+
+
+def _record_sent(history: History, newsletter: Newsletter) -> None:
+    on = newsletter.issue_date
+    history.record(HistoryKind.NEWS, (item.url for item in newsletter.news.items), on)
+    history.record(
+        HistoryKind.DEVTOOL,
+        (change.url for group in newsletter.devtools.items for change in group.changes),
+        on,
+    )
+    history.record(HistoryKind.PAPER, (p.paper.arxiv_id for p in newsletter.papers.items), on)
+    history.record(HistoryKind.REPO, (r.repo.full_name for r in newsletter.repos.items), on)
