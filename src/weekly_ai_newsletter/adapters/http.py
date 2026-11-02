@@ -18,6 +18,7 @@ def get_with_retry(
     url: str,
     *,
     params: Mapping[str, str | int] | None = None,
+    headers: Mapping[str, str] | None = None,
     retries: int = 3,
     backoff: float = 2.0,
     sleep: Callable[[float], None] = time.sleep,
@@ -28,7 +29,7 @@ def get_with_retry(
         if attempt:
             sleep(backoff * 2 ** (attempt - 1))
         try:
-            response = client.get(url, params=params)
+            response = client.get(url, params=params, headers=headers)
         except httpx.TransportError as exc:
             error = exc
             continue

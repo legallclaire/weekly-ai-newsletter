@@ -15,12 +15,11 @@ news:
     url: https://simonwillison.net/atom/everything/
   - name: Import AI
     url: https://importai.substack.com/feed
-  - name: The Batch
-    url: https://www.deeplearning.ai/the-batch/feed/
   - name: MIT Technology Review
     url: https://www.technologyreview.com/topic/artificial-intelligence/feed
 
 # AI coding tools: every notable release is covered, grouped by tool.
+# GitHub releases.atom URLs are read through the GitHub API (stable releases only).
 devtools:
   - name: Claude Code
     url: https://github.com/anthropics/claude-code/releases.atom
