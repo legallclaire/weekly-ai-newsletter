@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import Sequence
 
 from pydantic import BaseModel
@@ -9,6 +10,8 @@ from weekly_ai_newsletter.domain.errors import LLMOutputError
 from weekly_ai_newsletter.domain.models import ScoredPaper, SelectedPaper
 from weekly_ai_newsletter.ports import LLMClient
 from weekly_ai_newsletter.prompts import LANGUAGE_NAMES, render_prompt
+
+logger = logging.getLogger(__name__)
 
 
 class PaperWriteup(BaseModel):
@@ -47,8 +50,10 @@ class PaperWriter:
         answer = self._llm.structured(system=system, prompt=prompt, output_model=PaperWriteupBatch)
         writeups = {w.arxiv_id: w for w in answer.writeups}
         missing = [c.paper.arxiv_id for c in selected if c.paper.arxiv_id not in writeups]
-        if missing:
+        if len(missing) == len(selected):
             raise LLMOutputError(f"missing write-ups for {', '.join(missing)}")
+        if missing:
+            logger.warning("Dropping papers without a write-up: %s", ", ".join(missing))
         return [
             SelectedPaper(
                 paper=c.paper,
@@ -57,4 +62,5 @@ class PaperWriter:
                 why_selected=writeups[c.paper.arxiv_id].why_selected,
             )
             for c in selected
+            if c.paper.arxiv_id in writeups
         ]

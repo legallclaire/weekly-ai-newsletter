@@ -9,14 +9,18 @@ from zoneinfo import ZoneInfo
 PARIS = ZoneInfo("Europe/Paris")
 
 
+# Scheduled runs can start an hour or more late; the archive check prevents double sends.
+LATE_WINDOW_HOURS = 3
+
+
 def is_send_time(now: datetime, *, hour: int = 7) -> bool:
     if now.tzinfo is None:
         raise ValueError("now must be timezone-aware")
-    return now.astimezone(PARIS).hour == hour
+    return hour <= now.astimezone(PARIS).hour < hour + LATE_WINDOW_HOURS
 
 
 def should_send(now: datetime, archive_dir: Path, *, hour: int = 7) -> bool:
-    """True at the send hour in Paris, unless today's issue was already archived."""
+    """True from the send hour in Paris until a few hours later, unless already archived."""
     if not is_send_time(now, hour=hour):
         return False
     today = now.astimezone(PARIS).date()

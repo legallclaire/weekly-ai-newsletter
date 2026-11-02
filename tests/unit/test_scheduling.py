@@ -12,7 +12,10 @@ from weekly_ai_newsletter.scheduling import is_send_time, should_send
         (datetime(2026, 11, 4, 6, 10, tzinfo=UTC), True),  # winter: 07:10 Paris
         (datetime(2026, 11, 4, 5, 10, tzinfo=UTC), False),  # winter: 06:10 Paris
         (datetime(2026, 7, 1, 5, 25, tzinfo=UTC), True),  # summer: 07:25 Paris
-        (datetime(2026, 7, 1, 6, 5, tzinfo=UTC), False),  # summer: 08:05 Paris
+        (datetime(2026, 7, 1, 6, 5, tzinfo=UTC), True),  # summer: 08:05 Paris, late cron
+        (datetime(2026, 7, 1, 7, 59, tzinfo=UTC), True),  # summer: 09:59 Paris, very late cron
+        (datetime(2026, 7, 1, 8, 0, tzinfo=UTC), False),  # summer: 10:00 Paris, too late
+        (datetime(2026, 7, 1, 4, 59, tzinfo=UTC), False),  # summer: 06:59 Paris, too early
     ],
 )
 def test_send_time_follows_paris_daylight_saving(utc: datetime, expected: bool) -> None:

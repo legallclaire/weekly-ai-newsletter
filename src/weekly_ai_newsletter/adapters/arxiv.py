@@ -11,6 +11,7 @@ import feedparser
 import httpx
 
 from weekly_ai_newsletter.adapters.http import get_with_retry
+from weekly_ai_newsletter.domain.errors import SourceError
 from weekly_ai_newsletter.domain.models import Paper
 from weekly_ai_newsletter.domain.window import TimeWindow
 
@@ -28,12 +29,14 @@ class ArxivPaperSource:
         page_size: int = 1000,
         max_results: int = 20000,
         delay_seconds: float = 3.0,
+        short_page_retries: int = 2,
         sleep: Callable[[float], None] = time.sleep,
     ) -> None:
         self._client = client
         self._page_size = page_size
         self._max_results = max_results
         self._delay = delay_seconds
+        self._short_page_retries = short_page_retries
         self._sleep = sleep
 
     def fetch(self, categories: Sequence[str], window: TimeWindow) -> list[Paper]:
@@ -45,6 +48,20 @@ class ArxivPaperSource:
         for start in range(0, self._max_results, self._page_size):
             if start:
                 self._sleep(self._delay)  # arXiv asks for >= 3 s between requests
+            entries = self._fetch_page(query, start)
+            for entry in entries:
+                paper = _to_paper(entry)
+                if window.contains(paper.published):
+                    papers.setdefault(paper.arxiv_id, paper)
+            if len(entries) < self._page_size:
+                break
+        return list(papers.values())
+
+    def _fetch_page(self, query: str, start: int) -> list[Any]:
+        """One page; arXiv sometimes answers 200 with a truncated page, which is retried."""
+        for attempt in range(self._short_page_retries + 1):
+            if attempt:
+                self._sleep(self._delay)
             response = get_with_retry(
                 self._client,
                 ARXIV_API_URL,
@@ -57,14 +74,23 @@ class ArxivPaperSource:
                 },
                 sleep=self._sleep,
             )
-            entries = feedparser.parse(response.text).entries
-            for entry in entries:
-                paper = _to_paper(entry)
-                if window.contains(paper.published):
-                    papers.setdefault(paper.arxiv_id, paper)
-            if len(entries) < self._page_size:
-                break
-        return list(papers.values())
+            parsed = feedparser.parse(response.text)
+            entries: list[Any] = list(parsed.entries)
+            total = _total_results(parsed)
+            expected = min(self._page_size, max(total - start, 0)) if total is not None else 0
+            if len(entries) >= expected:
+                return entries
+        raise SourceError(
+            f"arXiv returned {len(entries)} of {total} results at offset {start} after retries"
+        )
+
+
+def _total_results(parsed: Any) -> int | None:
+    raw = parsed.feed.get("opensearch_totalresults")
+    try:
+        return int(raw) if raw is not None else None
+    except ValueError:
+        return None
 
 
 def _arxiv_time(moment: datetime) -> str:

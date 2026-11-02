@@ -39,3 +39,19 @@ def test_no_call_when_nothing_selected() -> None:
     llm = FakeLLM({})
     assert PaperWriter(llm, language="en").write([]) == []
     assert llm.calls == []
+
+
+def test_paper_without_writeup_is_dropped_not_the_whole_section() -> None:
+    selected = [
+        *SELECTED,
+        ScoredPaper(make_paper("2610.00002", title="RAG"), make_score("2610.00002")),
+    ]
+    llm = FakeLLM(
+        {
+            PaperWriteupBatch: PaperWriteupBatch(
+                writeups=[PaperWriteup(arxiv_id="2610.00002", summary="S.", why_selected="W.")]
+            )
+        }
+    )
+    papers = PaperWriter(llm, language="en").write(selected)
+    assert [p.paper.arxiv_id for p in papers] == ["2610.00002"]

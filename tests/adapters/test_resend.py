@@ -51,6 +51,31 @@ def test_network_failure_is_a_delivery_error() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         raise httpx.ConnectError("down", request=request)
 
-    sender = ResendEmailSender(httpx.Client(transport=httpx.MockTransport(handler)), api_key="k")
-    with pytest.raises(EmailDeliveryError):
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    sender = ResendEmailSender(client, api_key="k", sleep=lambda _: None)
+    with pytest.raises(EmailDeliveryError, match="could not reach"):
         sender.send(EMAIL)
+
+
+def test_transient_errors_are_retried() -> None:
+    statuses = [429, 503, 200]
+    delays: list[float] = []
+    transport = httpx.MockTransport(lambda r: httpx.Response(statuses.pop(0), json={}))
+    sender = ResendEmailSender(httpx.Client(transport=transport), api_key="k", sleep=delays.append)
+    sender.send(EMAIL)
+    assert statuses == []
+    assert len(delays) == 2
+
+
+def test_persistent_server_error_is_a_delivery_error() -> None:
+    transport = httpx.MockTransport(lambda r: httpx.Response(500, json={}))
+    sender = ResendEmailSender(httpx.Client(transport=transport), api_key="k", sleep=lambda _: None)
+    with pytest.raises(EmailDeliveryError, match="500"):
+        sender.send(EMAIL)
+
+
+def test_idempotency_conflict_means_already_sent() -> None:
+    body = {"name": "invalid_idempotent_request", "message": "Same key, different payload"}
+    transport = httpx.MockTransport(lambda r: httpx.Response(409, json=body))
+    sender = ResendEmailSender(httpx.Client(transport=transport), api_key="k", sleep=lambda _: None)
+    sender.send(EMAIL)  # does not raise: this issue was already delivered
