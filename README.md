@@ -12,6 +12,8 @@ A weekly AI digest delivered by email every Wednesday at 07:00 (Paris time):
 - **Skills & plugins**: up to 5 recent agent skills, coding-agent plugins and MCP servers
   (at most 2 MCP servers), found through GitHub topic search
 
+<img src="docs/assets/newsletter-preview.png" alt="Top of a newsletter issue" width="480">
+
 Past issues are in [`archive/`](archive/).
 
 ## How papers are selected
