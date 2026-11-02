@@ -1,0 +1,58 @@
+{% macro section_body(section, empty_label) %}
+{% if not section.available %}{{ labels.unavailable }}
+{% elif not section.items %}{{ empty_label }}
+{% else %}{{ caller() }}{% endif %}
+{% endmacro %}
+{{ subject }}
+{{ "=" * subject | length }}
+
+## {{ labels.news }}
+
+{% call section_body(newsletter.news, labels.empty) %}
+{% for item in newsletter.news.items %}
+- {{ item.title }} ({{ item.source }})
+  {{ item.url }}
+  {{ item.summary }}
+
+{% endfor %}
+{% endcall %}
+
+## {{ labels.devtools }}
+
+{% call section_body(newsletter.devtools, labels.empty) %}
+{% for group in newsletter.devtools.items %}
+### {{ group.tool }}
+{% for change in group.changes %}
+- {{ change.title }}: {{ change.summary }}
+  {{ change.url }}
+{% endfor %}
+
+{% endfor %}
+{% endcall %}
+
+## {{ labels.papers }}
+
+{% call section_body(newsletter.papers, labels.empty_papers) %}
+{% for item in newsletter.papers.items %}
+{% set s = item.score %}
+- {{ item.paper.title }}
+  {{ item.paper.url }}
+  {{ item.summary }}
+  {{ labels.why_selected }} : {{ item.why_selected }}
+  {{ labels.relevance }} {{ s.relevance }} · {{ labels.novelty }} {{ s.novelty }} · {{ labels.evidence }} {{ s.evidence }} · {{ labels.depth }} {{ s.depth }} · {{ labels.practical_utility }} {{ s.practical_utility }} → {{ s.total }}/{{ max_total }}
+
+{% endfor %}
+{% endcall %}
+
+## {{ labels.repos }}
+
+{% call section_body(newsletter.repos, labels.empty) %}
+{% for item in newsletter.repos.items %}
+- {{ item.repo.full_name }} (+{{ "{:,}".format(item.repo.stars_this_week) }} {{ labels.stars_this_week }})
+  {{ item.repo.url }}
+  {{ item.why_interesting }}
+
+{% endfor %}
+{% endcall %}
+--
+{{ labels.footer }}

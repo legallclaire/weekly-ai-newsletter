@@ -1,0 +1,78 @@
+{% macro heading(title) %}
+<h2 style="font-size:18px;margin:32px 0 12px;padding-bottom:6px;border-bottom:2px solid #6366f1;">{{ title }}</h2>
+{% endmacro %}
+{% macro notice(text) %}
+<p style="margin:0;color:#71717a;font-style:italic;">{{ text }}</p>
+{% endmacro %}
+{% macro section_body(section, empty_label) %}
+{% if not section.available %}{{ notice(labels.unavailable) }}{% elif not section.items %}{{ notice(empty_label) }}{% else %}{{ caller() }}{% endif %}
+{% endmacro %}
+<!doctype html>
+<html lang="{{ newsletter.language }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ subject }}</title>
+</head>
+<body style="margin:0;padding:0;background:#f4f4f5;">
+<div style="max-width:640px;margin:0 auto;padding:24px 16px;font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#18181b;line-height:1.55;">
+<div style="background:#ffffff;border-radius:12px;padding:24px;">
+<h1 style="font-size:24px;margin:0 0 4px;">{{ labels.title }}</h1>
+<p style="margin:0;color:#71717a;">{{ date_label }}</p>
+
+{{ heading(labels.news) }}
+{% call section_body(newsletter.news, labels.empty) %}
+{% for item in newsletter.news.items %}
+<div style="margin:0 0 16px;">
+<a href="{{ item.url }}" style="color:#4338ca;font-weight:600;text-decoration:none;">{{ item.title }}</a>
+<span style="color:#71717a;font-size:13px;"> · {{ item.source }}</span>
+<p style="margin:4px 0 0;">{{ item.summary }}</p>
+</div>
+{% endfor %}
+{% endcall %}
+
+{{ heading(labels.devtools) }}
+{% call section_body(newsletter.devtools, labels.empty) %}
+{% for group in newsletter.devtools.items %}
+<h3 style="font-size:15px;margin:16px 0 6px;">{{ group.tool }}</h3>
+<ul style="margin:0;padding-left:20px;">
+{% for change in group.changes %}
+<li style="margin:0 0 6px;"><a href="{{ change.url }}" style="color:#4338ca;">{{ change.title }}</a> — {{ change.summary }}</li>
+{% endfor %}
+</ul>
+{% endfor %}
+{% endcall %}
+
+{{ heading(labels.papers) }}
+{% call section_body(newsletter.papers, labels.empty_papers) %}
+{% for item in newsletter.papers.items %}
+{% set s = item.score %}
+<div style="margin:0 0 24px;">
+<a href="{{ item.paper.url }}" style="color:#4338ca;font-weight:600;font-size:16px;text-decoration:none;">{{ item.paper.title }}</a>
+<p style="margin:2px 0 8px;color:#71717a;font-size:13px;">{{ item.paper.authors[:3] | join(", ") }}{% if item.paper.authors | length > 3 %} et al.{% endif %}</p>
+<p style="margin:0 0 8px;">{{ item.summary }}</p>
+<p style="margin:0 0 8px;"><strong>{{ labels.why_selected }} :</strong> {{ item.why_selected }}</p>
+<p style="margin:0;font-size:12px;color:#52525b;background:#f4f4f5;border-radius:6px;padding:6px 10px;">
+{{ labels.relevance }} {{ s.relevance }} · {{ labels.novelty }} {{ s.novelty }} · {{ labels.evidence }} {{ s.evidence }} · {{ labels.depth }} {{ s.depth }} · {{ labels.practical_utility }} {{ s.practical_utility }} → <strong>{{ s.total }}/{{ max_total }}</strong>
+</p>
+</div>
+{% endfor %}
+{% endcall %}
+
+{{ heading(labels.repos) }}
+{% call section_body(newsletter.repos, labels.empty) %}
+{% for item in newsletter.repos.items %}
+<div style="margin:0 0 14px;">
+<a href="{{ item.repo.url }}" style="color:#4338ca;font-weight:600;text-decoration:none;">{{ item.repo.full_name }}</a>
+<span style="color:#71717a;font-size:13px;"> · ★ +{{ "{:,}".format(item.repo.stars_this_week) }} {{ labels.stars_this_week }}{% if item.repo.language %} · {{ item.repo.language }}{% endif %}</span>
+{% if item.repo.description %}<p style="margin:4px 0 0;color:#3f3f46;">{{ item.repo.description }}</p>{% endif %}
+<p style="margin:4px 0 0;">{{ item.why_interesting }}</p>
+</div>
+{% endfor %}
+{% endcall %}
+
+<p style="margin:32px 0 0;font-size:12px;color:#a1a1aa;">{{ labels.footer }}</p>
+</div>
+</div>
+</body>
+</html>
