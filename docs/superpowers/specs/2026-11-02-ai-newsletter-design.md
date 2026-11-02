@@ -83,14 +83,16 @@ src/weekly_ai_newsletter/
   rendering/
     renderer.py
     templates/newsletter.html.j2, newsletter.txt.j2
+  prompts/       # system prompt templates (versioned, reviewable)
   config.py      # Settings (Pydantic), loads config/*.yaml + env vars
-  pipeline.py    # orchestration
+  pipeline.py    # orchestration (build, then publish)
+  bootstrap.py   # composition root: wires concrete adapters
+  scheduling.py  # "is it 07:00 in Paris and not yet sent?" guard
   cli.py         # `newsletter run [--dry-run] [--date YYYY-MM-DD]`
 config/
   settings.yaml  # language, model, thresholds, counts, arXiv categories
   sources.yaml   # news feeds, dev-tool feeds
   keywords.yaml  # weighted positive/negative keywords (papers & repos)
-prompts/         # prompt templates (versioned, reviewable)
 state/history.json
 archive/YYYY-MM-DD.html
 tests/
@@ -98,7 +100,7 @@ tests/
 .github/workflows/ci.yml, newsletter.yml
 ```
 
-Adapters are wired in a single composition root (`pipeline.build_pipeline(settings)`),
+Adapters are wired in a single composition root (`bootstrap.build_pipeline(...)`),
 so tests can inject fakes (`FakeLLMClient`, `FakeEmailSender`, …).
 
 ## 4. Data flow
@@ -125,7 +127,10 @@ Each section is built independently. A section failure yields a `Section` in an
 
 **Sources.** arXiv API, categories `cs.LG`, `cs.AI`, `cs.CL`, `stat.ML`, `cs.IR`,
 `cs.MA`, `cs.SE`, `cs.DC` (configurable), filtered on submission date within the
-window. Pagination respects arXiv's rate limit (≥ 3 s between requests). Papers are
+paper window. Because arXiv announces submissions with a delay of up to ~2 days, the
+paper window is shifted back by `window_lag_days` (default 2):
+`[run_date - 9 days, run_date - 2 days)`. Consecutive weeks stay contiguous, so no
+paper is skipped. Pagination respects arXiv's rate limit (≥ 3 s between requests). Papers are
 deduplicated by arXiv ID (cross-lists appear once).
 
 **Keyword pre-filter (pure Python).** `keywords.yaml` defines weighted terms per theme:
@@ -193,9 +198,10 @@ Rendered as one block per tool with links to the release notes.
 1. **Candidates:** `github.com/trending?since=weekly` for all languages and Python;
    parse repo name, description, language, total stars, stars gained this week.
    Behind the `TrendingSource` port so an OSS Insight API adapter can replace it.
-2. **Rule filter (pure Python):** keep repos whose description/topics match AI/ML
+2. **Rule filter (pure Python):** keep repos whose name/description match AI/ML
    keywords (llm, agent, rag, inference, mcp, ml…); exclude `awesome-*` lists,
-   prompt collections and repos without code.
+   prompt collections and repos without code (no detected language). The Trending
+   page does not expose topics, so topics are not used.
 3. **Dedup:** skip repos sent in the last 8 weeks.
 4. **LLM validation:** Claude confirms each candidate is a genuinely useful tool or
    library (not hype / list / clone) and writes a one-sentence "why it's interesting".
@@ -219,8 +225,11 @@ description, why it's interesting.
   failure the batch is skipped and logged.
 - Section failure → "unavailable this week" notice; the run continues and ends with a
   warning annotation.
-- Global failure (LLM or email provider unreachable after retries, invalid config)
-  → non-zero exit; GitHub notifies the repository owner.
+- Global failure → non-zero exit; GitHub notifies the repository owner. Global
+  failures are: invalid config or missing secrets, **every** section unavailable
+  (e.g. the LLM is unreachable), or the email provider rejecting the send.
+- The email is sent with an idempotency key derived from the issue date, so a
+  retried run cannot deliver the same issue twice.
 - A run summary (counts per stage) is logged and written to the GitHub Actions job
   summary.
 - Secrets (`ANTHROPIC_API_KEY`, `RESEND_API_KEY`, `RECIPIENT_EMAIL`, `SENDER_EMAIL`)
@@ -229,9 +238,10 @@ description, why it's interesting.
 ## 8. Scheduling
 
 `newsletter.yml` runs on two UTC crons covering CET and CEST
-(`0 5 * * 3` and `0 6 * * 3`) plus `workflow_dispatch`. A guard step skips the run
-unless the current Europe/Paris time is within the 07:00 hour window, so exactly one
-send happens per week regardless of daylight saving time. Manual dispatch bypasses the
+(`0 5 * * 3` and `0 6 * * 3`) plus `workflow_dispatch`. A guard step (`newsletter should-send`) skips the
+run unless the current Europe/Paris time is within the 07:00 hour **and** today's
+archive file does not exist yet, so exactly one send happens per week regardless of
+daylight saving time or delayed cron triggers. Manual dispatch bypasses the
 guard. GitHub cron delays of a few minutes are accepted.
 
 ## 9. Testing
@@ -254,7 +264,7 @@ All tests run offline.
 - README: pipeline diagram, architecture rationale (ports & adapters, deterministic
   scoring in Python), sample newsletter screenshot, 5-command setup,
   `newsletter run --dry-run`, how to add a source.
-- MIT license, CI and coverage badges.
+- MIT license, CI badge; coverage is printed in the CI logs.
 
 ## 11. Configuration summary (defaults)
 
@@ -263,6 +273,7 @@ All tests run offline.
 | `language` | `fr` |
 | `llm.model` | `claude-sonnet-5-5` |
 | `papers.categories` | `cs.LG, cs.AI, cs.CL, stat.ML, cs.IR, cs.MA, cs.SE, cs.DC` |
+| `papers.window_lag_days` | `2` |
 | `papers.prefilter_size` | `50` |
 | `papers.batch_size` | `10` |
 | `papers.min_total` | `45` |
