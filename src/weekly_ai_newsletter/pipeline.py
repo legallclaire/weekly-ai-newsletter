@@ -1,4 +1,4 @@
-"""Orchestration: build four independent sections, render, then publish."""
+"""Orchestration: build independent sections, render, then publish."""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ from weekly_ai_newsletter.config import AppConfig, FeedConfig
 from weekly_ai_newsletter.domain.errors import LLMOutputError, PipelineError, SourceError
 from weekly_ai_newsletter.domain.history import History, HistoryKind
 from weekly_ai_newsletter.domain.models import (
+    CuratedExtension,
     CuratedRepo,
     DevToolGroup,
     FeedItem,
@@ -26,11 +27,13 @@ from weekly_ai_newsletter.ports import (
     HistoryStore,
     LLMClient,
     PaperSource,
+    RepoSearchSource,
     TrendingSource,
 )
 from weekly_ai_newsletter.rendering.renderer import NewsletterRenderer, RenderedNewsletter
 from weekly_ai_newsletter.services.dedup import drop_sent, unique_by
 from weekly_ai_newsletter.services.devtools_curator import DevToolsCurator
+from weekly_ai_newsletter.services.extension_curator import ExtensionCurator
 from weekly_ai_newsletter.services.keyword_filter import KeywordFilter
 from weekly_ai_newsletter.services.news_curator import NewsCurator
 from weekly_ai_newsletter.services.paper_scorer import PaperScorer
@@ -47,6 +50,7 @@ class Dependencies:
     papers: PaperSource
     feeds: FeedSource
     trending: TrendingSource
+    repo_search: RepoSearchSource
     llm: LLMClient
     history: HistoryStore
 
@@ -118,6 +122,13 @@ class NewsletterPipeline:
         self._repo_curator = RepoCurator(
             deps.llm, language=settings.language, max_items=settings.repos.max_items
         )
+        self._extension_curator = ExtensionCurator(
+            deps.llm,
+            language=settings.language,
+            max_items=settings.extensions.max_items,
+            max_mcp=settings.extensions.max_mcp,
+            mcp_topics=settings.extensions.mcp_topics,
+        )
         self._rules = SelectionRules(
             min_total=settings.papers.min_total,
             min_novelty=settings.papers.min_novelty,
@@ -128,6 +139,8 @@ class NewsletterPipeline:
         history = self._deps.history.load()
         report = RunReport(issue_date=run_date)
         window = TimeWindow.week_before(run_date)
+        repos = self._section("repos", report, lambda: self._repos(run_date, history, report))
+        trending_names = {item.repo.full_name for item in repos.items}
         newsletter = Newsletter(
             issue_date=run_date,
             language=self._config.settings.language,
@@ -136,7 +149,12 @@ class NewsletterPipeline:
                 "devtools", report, lambda: self._devtools(window, history, report)
             ),
             papers=self._section("papers", report, lambda: self._papers(run_date, history, report)),
-            repos=self._section("repos", report, lambda: self._repos(run_date, history, report)),
+            repos=repos,
+            extensions=self._section(
+                "extensions",
+                report,
+                lambda: self._extensions(run_date, history, trending_names, report),
+            ),
         )
         if newsletter.all_unavailable:
             raise PipelineError("every section failed; refusing to send an empty newsletter")
@@ -261,6 +279,28 @@ class NewsletterPipeline:
         )
         return curated
 
+    def _extensions(
+        self, run_date: date, history: History, exclude: set[str], report: RunReport
+    ) -> list[CuratedExtension]:
+        settings = self._config.settings.extensions
+        fetched = self._deps.repo_search.search(
+            settings.topics,
+            created_after=run_date - timedelta(days=settings.created_within_days),
+            min_stars=settings.min_stars,
+        )
+        fresh = drop_sent(
+            (repo for repo in fetched if repo.full_name not in exclude),
+            key=lambda r: r.full_name,
+            history=history,
+            kind=HistoryKind.EXTENSION,
+        )
+        candidates = fresh[: settings.max_candidates]
+        curated = self._extension_curator.curate(candidates)
+        report.stages["extensions"] = (
+            f"{len(fetched)} found -> {len(candidates)} candidates -> {len(curated)} selected"
+        )
+        return curated
+
 
 def _record_sent(history: History, newsletter: Newsletter) -> None:
     on = newsletter.issue_date
@@ -272,3 +312,6 @@ def _record_sent(history: History, newsletter: Newsletter) -> None:
     )
     history.record(HistoryKind.PAPER, (p.paper.arxiv_id for p in newsletter.papers.items), on)
     history.record(HistoryKind.REPO, (r.repo.full_name for r in newsletter.repos.items), on)
+    history.record(
+        HistoryKind.EXTENSION, (e.repo.full_name for e in newsletter.extensions.items), on
+    )

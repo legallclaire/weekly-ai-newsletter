@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable, Mapping, Sequence
+from datetime import date
 from pathlib import Path
 
 from pydantic import BaseModel
@@ -18,9 +19,10 @@ from weekly_ai_newsletter.config import (
     Sources,
 )
 from weekly_ai_newsletter.domain.history import History
-from weekly_ai_newsletter.domain.models import FeedItem, OutgoingEmail, Paper, Repo
+from weekly_ai_newsletter.domain.models import ExtensionRepo, FeedItem, OutgoingEmail, Paper, Repo
 from weekly_ai_newsletter.domain.window import TimeWindow
 from weekly_ai_newsletter.services.devtools_curator import ChangePick, DevToolsSelection, ToolGroup
+from weekly_ai_newsletter.services.extension_curator import ExtensionVerdict, ExtensionVerdicts
 from weekly_ai_newsletter.services.news_curator import NewsPick, NewsSelection
 from weekly_ai_newsletter.services.paper_scorer import PaperScoreBatch
 from weekly_ai_newsletter.services.paper_writer import PaperWriteup, PaperWriteupBatch
@@ -77,6 +79,20 @@ class FakeTrendingSource:
         self._repos = repos
 
     def fetch_weekly(self) -> list[Repo]:
+        if isinstance(self._repos, Exception):
+            raise self._repos
+        return list(self._repos)
+
+
+class FakeRepoSearchSource:
+    def __init__(self, repos: Sequence[ExtensionRepo] | Exception = ()) -> None:
+        self._repos = repos
+        self.queries: list[tuple[list[str], date, int]] = []
+
+    def search(
+        self, topics: Sequence[str], *, created_after: date, min_stars: int
+    ) -> list[ExtensionRepo]:
+        self.queries.append((list(topics), created_after, min_stars))
         if isinstance(self._repos, Exception):
             raise self._repos
         return list(self._repos)
@@ -153,8 +169,17 @@ def happy_llm() -> FakeLLM:
             ]
         )
 
+    def extensions(prompt: str) -> BaseModel:
+        return ExtensionVerdicts(
+            verdicts=[
+                ExtensionVerdict(full_name=r["full_name"], keep=True, why_interesting="Pratique.")
+                for r in json.loads(prompt)
+            ]
+        )
+
     return FakeLLM(
         {
+            ExtensionVerdicts: extensions,
             PaperScoreBatch: scores,
             PaperWriteupBatch: writeups,
             NewsSelection: news,

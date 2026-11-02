@@ -106,6 +106,25 @@ class CuratedRepo:
 
 
 @dataclass(frozen=True)
+class ExtensionRepo:
+    """A recent repository for coding agents: skill, plugin or MCP server."""
+
+    full_name: str
+    url: str
+    description: str
+    stars: int
+    created_at: datetime
+    topics: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class CuratedExtension:
+    repo: ExtensionRepo
+    why_interesting: str
+    is_mcp: bool
+
+
+@dataclass(frozen=True)
 class OutgoingEmail:
     sender: str
     recipient: str

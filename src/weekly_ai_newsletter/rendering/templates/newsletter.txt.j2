@@ -57,5 +57,16 @@
 
 {% endfor %}
 {% endcall %}
+
+## {{ labels.extensions }}
+
+{% call section_body(newsletter.extensions, labels.empty) %}
+{% for item in newsletter.extensions.items %}
+- {{ item.repo.full_name }} ({% if item.is_mcp %}MCP · {% endif %}{{ number(item.repo.stars) }} {{ labels.stars }})
+  {{ item.repo.url }}
+  {{ item.why_interesting }}
+
+{% endfor %}
+{% endcall %}
 --
 {{ labels.footer }}

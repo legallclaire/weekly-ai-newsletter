@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from weekly_ai_newsletter.domain.models import FeedItem, Paper, PaperScore, Repo
+from weekly_ai_newsletter.domain.models import ExtensionRepo, FeedItem, Paper, PaperScore, Repo
 
 NOW = datetime(2026, 10, 30, 12, 0, tzinfo=UTC)
 
@@ -71,4 +71,21 @@ def make_repo(
         language=language,
         stars=stars,
         stars_this_week=stars_this_week,
+    )
+
+
+def make_extension(
+    full_name: str = "acme/review-skill",
+    *,
+    stars: int = 400,
+    topics: tuple[str, ...] = ("agent-skills",),
+    description: str = "A code review skill",
+) -> ExtensionRepo:
+    return ExtensionRepo(
+        full_name=full_name,
+        url=f"https://github.com/{full_name}",
+        description=description,
+        stars=stars,
+        created_at=datetime(2026, 10, 20, tzinfo=UTC),
+        topics=topics,
     )

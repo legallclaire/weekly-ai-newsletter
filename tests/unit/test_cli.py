@@ -9,6 +9,7 @@ from tests.fakes import (
     NEWS_FEED,
     FakeFeedSource,
     FakePaperSource,
+    FakeRepoSearchSource,
     FakeTrendingSource,
     InMemoryHistoryStore,
     happy_llm,
@@ -29,6 +30,7 @@ def fake_build_pipeline(
             {NEWS_FEED: [make_feed_item()], DEVTOOLS_FEED: [make_feed_item("https://gh.example/v")]}
         ),
         trending=FakeTrendingSource([make_repo()]),
+        repo_search=FakeRepoSearchSource(),
         llm=happy_llm(),
         history=InMemoryHistoryStore(),
     )

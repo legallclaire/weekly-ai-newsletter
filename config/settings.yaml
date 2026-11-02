@@ -29,5 +29,15 @@ repos:
   repeat_after_weeks: 8
   trending_languages: ["", python]   # "" = all languages
 
+# Recent skills, plugins and MCP servers for coding agents (GitHub search by topic).
+extensions:
+  max_items: 5
+  max_mcp: 2
+  created_within_days: 30
+  min_stars: 50
+  topics: [claude-skills, claude-skill, claude-code-skills, agent-skills, codex-skills,
+           claude-code-plugin, mcp-server]
+  mcp_topics: [mcp-server]
+
 history_path: state/history.json
 archive_dir: archive

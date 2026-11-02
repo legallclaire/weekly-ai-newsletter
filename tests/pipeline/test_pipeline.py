@@ -3,13 +3,14 @@ from pathlib import Path
 
 import pytest
 
-from tests.factories import make_feed_item, make_paper, make_repo
+from tests.factories import make_extension, make_feed_item, make_paper, make_repo
 from tests.fakes import (
     DEVTOOLS_FEED,
     NEWS_FEED,
     FakeEmailSender,
     FakeFeedSource,
     FakePaperSource,
+    FakeRepoSearchSource,
     FakeTrendingSource,
     InMemoryHistoryStore,
     happy_llm,
@@ -28,6 +29,7 @@ def build(
     papers: FakePaperSource | None = None,
     feeds: FakeFeedSource | None = None,
     trending: FakeTrendingSource | None = None,
+    extensions: FakeRepoSearchSource | None = None,
     history: InMemoryHistoryStore | None = None,
     email: FakeEmailSender | None = None,
 ) -> NewsletterPipeline:
@@ -41,6 +43,7 @@ def build(
             }
         ),
         trending=trending or FakeTrendingSource([make_repo("acme/agent-kit")]),
+        repo_search=extensions or FakeRepoSearchSource([make_extension("acme/review-skill")]),
         llm=happy_llm(),
         history=history or InMemoryHistoryStore(),
     )
@@ -57,7 +60,7 @@ def test_build_and_publish_happy_path(tmp_path: Path) -> None:
     [sent] = email.sent
     assert sent.subject == "Veille IA hebdo — 4 novembre 2026"
     assert sent.idempotency_key == "weekly-ai-newsletter-2026-11-04"
-    for expected in ("Model X", "v2.1.0", "Agent planning", "acme/agent-kit"):
+    for expected in ("Model X", "v2.1.0", "Agent planning", "acme/agent-kit", "acme/review-skill"):
         assert expected in sent.html
     assert (tmp_path / "archive" / "2026-11-04.html").read_text() == sent.html
     saved = history.history
@@ -65,6 +68,7 @@ def test_build_and_publish_happy_path(tmp_path: Path) -> None:
     assert saved.was_sent(HistoryKind.NEWS, "https://lab.example/x")
     assert saved.was_sent(HistoryKind.DEVTOOL, "https://gh.example/v2")
     assert saved.was_sent(HistoryKind.REPO, "acme/agent-kit")
+    assert saved.was_sent(HistoryKind.EXTENSION, "acme/review-skill")
     assert "papers" in result.report.stages and not result.report.failures
 
 
@@ -84,6 +88,7 @@ def test_every_section_failing_is_fatal(tmp_path: Path) -> None:
         papers=FakePaperSource(boom),
         feeds=FakeFeedSource({NEWS_FEED: boom, DEVTOOLS_FEED: boom}),
         trending=FakeTrendingSource(boom),
+        extensions=FakeRepoSearchSource(boom),
     )
     with pytest.raises(PipelineError):
         pipeline.build(RUN_DATE)
@@ -132,3 +137,26 @@ def test_report_markdown_lists_funnels_and_failures(tmp_path: Path) -> None:
     markdown = pipeline.build(RUN_DATE).report.to_markdown()
     assert "| papers |" in markdown
     assert "**repos**" in markdown
+
+
+def test_extensions_skip_this_weeks_trending_repos_and_past_issues(tmp_path: Path) -> None:
+    previous = History()
+    previous.record(HistoryKind.EXTENSION, ["old/skill"], date(2026, 9, 2))
+    search = FakeRepoSearchSource(
+        [make_extension("acme/agent-kit"), make_extension("old/skill"), make_extension("new/skill")]
+    )
+    result = build(tmp_path, extensions=search, history=InMemoryHistoryStore(previous)).build(
+        RUN_DATE
+    )
+    assert [e.repo.full_name for e in result.newsletter.extensions.items] == ["new/skill"]
+    [(topics, created_after, min_stars)] = search.queries
+    assert created_after == date(2026, 10, 5) and min_stars == 50 and "mcp-server" in topics
+
+
+def test_failing_extension_search_degrades_its_section_only(tmp_path: Path) -> None:
+    result = build(tmp_path, extensions=FakeRepoSearchSource(SourceError("rate limited"))).build(
+        RUN_DATE
+    )
+    assert not result.newsletter.extensions.available
+    assert result.newsletter.repos.available
+    assert "rate limited" in result.report.failures["extensions"]

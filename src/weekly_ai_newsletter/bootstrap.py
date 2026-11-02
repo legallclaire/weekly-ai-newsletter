@@ -7,6 +7,7 @@ import httpx
 from weekly_ai_newsletter.adapters.arxiv import ArxivPaperSource
 from weekly_ai_newsletter.adapters.claude import ClaudeClient
 from weekly_ai_newsletter.adapters.github_releases import GithubReleasesSource, RoutingFeedSource
+from weekly_ai_newsletter.adapters.github_search import GithubRepoSearchSource
 from weekly_ai_newsletter.adapters.github_trending import GithubTrendingSource
 from weekly_ai_newsletter.adapters.json_history import JsonHistoryStore
 from weekly_ai_newsletter.adapters.resend import ResendEmailSender
@@ -24,6 +25,7 @@ def build_pipeline(config: AppConfig, secrets: Secrets, http: httpx.Client) -> N
             rss=RssFeedSource(http), releases=GithubReleasesSource(http, token=github_token)
         ),
         trending=GithubTrendingSource(http, languages=settings.repos.trending_languages),
+        repo_search=GithubRepoSearchSource(http, token=github_token),
         llm=ClaudeClient.from_api_key(
             secrets.anthropic_api_key.get_secret_value(),
             model=settings.llm.model,

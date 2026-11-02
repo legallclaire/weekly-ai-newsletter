@@ -60,9 +60,10 @@ def test_newsletter_all_unavailable() -> None:
         devtools=Section.unavailable("x"),
         papers=Section.unavailable("x"),
         repos=Section.unavailable("x"),
+        extensions=Section.unavailable("x"),
     )
     assert newsletter.all_unavailable
-    assert list(newsletter.sections) == ["news", "devtools", "papers", "repos"]
+    assert list(newsletter.sections) == ["news", "devtools", "papers", "repos", "extensions"]
 
 
 def test_history_records_and_checks_with_cutoff() -> None:

@@ -5,7 +5,13 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Any
 
-from weekly_ai_newsletter.domain.models import CuratedRepo, DevToolGroup, NewsItem, SelectedPaper
+from weekly_ai_newsletter.domain.models import (
+    CuratedExtension,
+    CuratedRepo,
+    DevToolGroup,
+    NewsItem,
+    SelectedPaper,
+)
 
 
 @dataclass(frozen=True)
@@ -36,6 +42,7 @@ class Newsletter:
     devtools: Section[DevToolGroup]
     papers: Section[SelectedPaper]
     repos: Section[CuratedRepo]
+    extensions: Section[CuratedExtension]
 
     @property
     def sections(self) -> dict[str, Section[Any]]:
@@ -44,6 +51,7 @@ class Newsletter:
             "devtools": self.devtools,
             "papers": self.papers,
             "repos": self.repos,
+            "extensions": self.extensions,
         }
 
     @property

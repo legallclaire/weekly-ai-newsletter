@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import date
 from typing import Protocol
 
 from pydantic import BaseModel
 
 from weekly_ai_newsletter.domain.history import History
-from weekly_ai_newsletter.domain.models import FeedItem, OutgoingEmail, Paper, Repo
+from weekly_ai_newsletter.domain.models import ExtensionRepo, FeedItem, OutgoingEmail, Paper, Repo
 from weekly_ai_newsletter.domain.window import TimeWindow
 
 
@@ -22,6 +23,14 @@ class FeedSource(Protocol):
 
 class TrendingSource(Protocol):
     def fetch_weekly(self) -> list[Repo]: ...
+
+
+class RepoSearchSource(Protocol):
+    def search(
+        self, topics: Sequence[str], *, created_after: date, min_stars: int
+    ) -> list[ExtensionRepo]:
+        """Repositories tagged with any of `topics`, most starred first."""
+        ...
 
 
 class LLMClient(Protocol):

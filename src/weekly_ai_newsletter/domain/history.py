@@ -11,6 +11,7 @@ class HistoryKind(StrEnum):
     NEWS = "news"
     DEVTOOL = "devtools"
     REPO = "repos"
+    EXTENSION = "extensions"
 
 
 @dataclass

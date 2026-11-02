@@ -5,9 +5,12 @@
 A weekly AI digest delivered by email every Wednesday at 07:00 (Paris time):
 
 - **AI news**: the handful of stories that mattered this week
-- **AI dev tools**: every notable release of AI coding tools (Claude Code, Codex, Cursor, Copilot, Gemini CLI…)
+- **AI dev tools**: every notable release of AI coding tools (Claude Code, Codex, Cursor, Gemini CLI…);
+  tools listed as secondary (e.g. Copilot) appear only for a major announcement
 - **Research papers**: 0–3 arXiv papers that genuinely teach something, selected by a scoring rubric
 - **GitHub trending**: up to 5 AI/ML repositories that gained the most stars this week
+- **Skills & plugins**: up to 5 recent agent skills, coding-agent plugins and MCP servers
+  (at most 2 MCP servers), found through GitHub topic search
 
 Past issues are in [`archive/`](archive/).
 
@@ -33,12 +36,12 @@ Ports and adapters: the core never imports an HTTP client or an SDK.
 ```
 src/weekly_ai_newsletter/
   domain/      pure models: Paper, PaperScore, Newsletter, Section, History…
-  ports.py     Protocols: PaperSource, FeedSource, TrendingSource, LLMClient, EmailSender, HistoryStore
+  ports.py     Protocols: PaperSource, FeedSource, TrendingSource, RepoSearchSource, LLMClient, EmailSender, HistoryStore
   services/    keyword filter, selection rules, LLM-backed curators, dedup
-  adapters/    arXiv, RSS/Atom, GitHub releases, GitHub Trending, Claude, Resend, JSON history
+  adapters/    arXiv, RSS/Atom, GitHub releases, GitHub Trending, GitHub search, Claude, Resend, JSON history
   rendering/   Jinja2 templates (HTML + plain text)
   prompts/     system prompts, versioned like code
-  pipeline.py  builds four independent sections, then publishes
+  pipeline.py  builds five independent sections, then publishes
   bootstrap.py the only place that wires concrete adapters
 ```
 

@@ -52,6 +52,28 @@ class RepoSettings(_Strict):
     trending_languages: list[str] = Field(default_factory=lambda: ["", "python"])
 
 
+class ExtensionSettings(_Strict):
+    """Recent skills, plugins and MCP servers for coding agents, from GitHub search."""
+
+    max_items: int = Field(default=5, gt=0)
+    max_mcp: int = Field(default=2, ge=0)
+    max_candidates: int = Field(default=40, gt=0)
+    created_within_days: int = Field(default=30, gt=0)
+    min_stars: int = Field(default=50, ge=0)
+    topics: list[str] = Field(
+        default_factory=lambda: [
+            "claude-skills",
+            "claude-skill",
+            "claude-code-skills",
+            "agent-skills",
+            "codex-skills",
+            "claude-code-plugin",
+            "mcp-server",
+        ]
+    )
+    mcp_topics: list[str] = Field(default_factory=lambda: ["mcp-server"])
+
+
 class Settings(_Strict):
     language: Language = "fr"
     llm: LLMSettings = Field(default_factory=LLMSettings)
@@ -59,6 +81,7 @@ class Settings(_Strict):
     news: NewsSettings = Field(default_factory=NewsSettings)
     devtools: DevToolsSettings = Field(default_factory=DevToolsSettings)
     repos: RepoSettings = Field(default_factory=RepoSettings)
+    extensions: ExtensionSettings = Field(default_factory=ExtensionSettings)
     history_path: Path = Path("state/history.json")
     archive_dir: Path = Path("archive")
 

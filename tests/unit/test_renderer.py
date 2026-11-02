@@ -1,7 +1,8 @@
 from datetime import date
 
-from tests.factories import make_paper, make_repo, make_score
+from tests.factories import make_extension, make_paper, make_repo, make_score
 from weekly_ai_newsletter.domain.models import (
+    CuratedExtension,
     CuratedRepo,
     DevToolChange,
     DevToolGroup,
@@ -36,6 +37,14 @@ def newsletter(
         devtools=Section.ok([DevToolGroup("Claude Code", (change,))]),
         papers=papers if papers is not None else Section.ok([PAPER]),
         repos=repos if repos is not None else Section.ok([repo]),
+        extensions=Section.ok(
+            [
+                CuratedExtension(make_extension("acme/review-skill", stars=1234), "Revue.", False),
+                CuratedExtension(
+                    make_extension("acme/db-mcp", topics=("mcp-server",)), "Base.", True
+                ),
+            ]
+        ),
     )
 
 
@@ -116,8 +125,17 @@ def test_inline_code_in_summaries_renders_as_code_in_html() -> None:
             devtools=Section.ok([DevToolGroup("Copilot", (change,))]),
             papers=base.papers,
             repos=base.repos,
+            extensions=base.extensions,
         )
     )
     assert "<code" in rendered.html and "/security-review</code>" in rendered.html
     assert "`" not in rendered.html
     assert "&lt;now&gt;" in rendered.html
+
+
+def test_extensions_section_shows_stars_and_marks_mcp_servers() -> None:
+    rendered = NewsletterRenderer().render(newsletter())
+    assert "Skills &amp; plugins" in rendered.html
+    assert "https://github.com/acme/review-skill" in rendered.html
+    assert "1\u202f234 étoiles" in rendered.text
+    assert "acme/db-mcp (MCP" in rendered.text
