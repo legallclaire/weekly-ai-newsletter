@@ -7,7 +7,7 @@ from datetime import date, datetime
 
 import httpx
 
-from weekly_ai_newsletter.adapters.http import get_with_retry
+from weekly_ai_newsletter.adapters.http import get_with_retry, github_headers
 from weekly_ai_newsletter.domain.errors import SourceError, describe_error
 from weekly_ai_newsletter.domain.models import ExtensionRepo
 
@@ -31,9 +31,7 @@ class GithubRepoSearchSource:
     ) -> None:
         self._client = client
         self._sleep = sleep
-        self._headers = {"Accept": "application/vnd.github+json"}
-        if token:
-            self._headers["Authorization"] = f"Bearer {token}"
+        self._headers = github_headers(token)
 
     def search(
         self, topics: Sequence[str], *, created_after: date, min_stars: int

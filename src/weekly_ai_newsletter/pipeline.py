@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 
@@ -48,6 +49,8 @@ from weekly_ai_newsletter.services.repo_curator import RepoCurator
 from weekly_ai_newsletter.services.repo_filter import RepoRuleFilter
 
 logger = logging.getLogger(__name__)
+
+FEED_WORKERS = 8
 
 
 @dataclass(frozen=True)
@@ -205,53 +208,76 @@ class NewsletterPipeline:
     def _collect_feeds(
         self, feeds: Sequence[FeedConfig], window: TimeWindow, report: RunReport
     ) -> list[FeedItem]:
+        def fetch(feed: FeedConfig) -> list[FeedItem] | Exception:
+            try:
+                return self._deps.feeds.fetch(feed.name, feed.url, window)
+            except Exception as exc:  # one broken feed must not hide the others
+                return exc
+
+        # Feeds are independent network calls: fetch them together, report them in order.
+        with ThreadPoolExecutor(max_workers=FEED_WORKERS) as pool:
+            results = list(pool.map(fetch, feeds))
         items: list[FeedItem] = []
         failed = 0
-        for feed in feeds:
-            try:
-                items.extend(self._deps.feeds.fetch(feed.name, feed.url, window))
-            except Exception as exc:  # one broken feed must not hide the others
+        for feed, result in zip(feeds, results, strict=True):
+            if isinstance(result, Exception):
                 failed += 1
-                logger.warning("Feed %s (%s) failed: %s", feed.name, feed.url, exc)
-                report.warnings.append(f"feed {feed.name} failed: {describe_error(exc)}")
+                logger.warning("Feed %s (%s) failed: %s", feed.name, feed.url, result)
+                report.warnings.append(f"feed {feed.name} failed: {describe_error(result)}")
+            else:
+                items.extend(result)
         if feeds and failed == len(feeds):
             raise SourceError("every feed of this section failed")
         return items
 
-    def _news(self, window: TimeWindow, history: History, report: RunReport) -> list[NewsItem]:
-        settings = self._config.settings.news
-        fetched = self._collect_feeds(self._config.sources.news, window, report)
+    def _feed_candidates(
+        self,
+        feeds: Sequence[FeedConfig],
+        *,
+        kind: HistoryKind,
+        max_candidates: int,
+        window: TimeWindow,
+        history: History,
+        report: RunReport,
+    ) -> tuple[int, list[FeedItem]]:
+        """Fetched count, and the newest not-yet-sent items (one per URL)."""
+        fetched = self._collect_feeds(feeds, window, report)
         fresh = drop_sent(
-            unique_by(fetched, key=lambda i: i.url),
-            key=lambda i: i.url,
-            history=history,
-            kind=HistoryKind.NEWS,
+            unique_by(fetched, key=lambda i: i.url), key=lambda i: i.url, history=history, kind=kind
         )
         fresh.sort(key=lambda i: i.published, reverse=True)
-        candidates = fresh[: settings.max_candidates]
+        return len(fetched), fresh[:max_candidates]
+
+    def _news(self, window: TimeWindow, history: History, report: RunReport) -> list[NewsItem]:
+        fetched, candidates = self._feed_candidates(
+            self._config.sources.news,
+            kind=HistoryKind.NEWS,
+            max_candidates=self._config.settings.news.max_candidates,
+            window=window,
+            history=history,
+            report=report,
+        )
         curated = self._news_curator.curate(candidates)
         report.stages["news"] = (
-            f"{len(fetched)} fetched -> {len(candidates)} candidates -> {len(curated)} selected"
+            f"{fetched} fetched -> {len(candidates)} candidates -> {len(curated)} selected"
         )
         return curated
 
     def _devtools(
         self, window: TimeWindow, history: History, report: RunReport
     ) -> list[DevToolGroup]:
-        settings = self._config.settings.devtools
-        fetched = self._collect_feeds(self._config.sources.devtools, window, report)
-        fresh = drop_sent(
-            unique_by(fetched, key=lambda i: i.url),
-            key=lambda i: i.url,
-            history=history,
+        fetched, candidates = self._feed_candidates(
+            self._config.sources.devtools,
             kind=HistoryKind.DEVTOOL,
+            max_candidates=self._config.settings.devtools.max_candidates,
+            window=window,
+            history=history,
+            report=report,
         )
-        fresh.sort(key=lambda i: i.published, reverse=True)
-        candidates = fresh[: settings.max_candidates]
         groups = self._devtools_curator.curate(candidates)
         changes = sum(len(group.changes) for group in groups)
         report.stages["devtools"] = (
-            f"{len(fetched)} fetched -> {len(candidates)} candidates -> "
+            f"{fetched} fetched -> {len(candidates)} candidates -> "
             f"{changes} changes in {len(groups)} tools"
         )
         return groups
