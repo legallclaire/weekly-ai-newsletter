@@ -39,10 +39,11 @@ class ClaudeClient:
     def structured[M: BaseModel](self, *, system: str, prompt: str, output_model: type[M]) -> M:
         schema = transform_schema(output_model)
         last_error: Exception | None = None
+        max_tokens = self._max_tokens
         for attempt in range(1, self._max_attempts + 1):
             response = self._client.beta.messages.create(
                 model=self._model,
-                max_tokens=self._max_tokens,
+                max_tokens=max_tokens,
                 system=system,
                 messages=[{"role": "user", "content": prompt}],
                 output_config={"format": {"type": "json_schema", "schema": schema}},
@@ -51,6 +52,8 @@ class ClaudeClient:
             )
             if response.stop_reason in ("refusal", "max_tokens"):
                 last_error = LLMOutputError(f"generation stopped: {response.stop_reason}")
+                if response.stop_reason == "max_tokens":
+                    max_tokens *= 2  # the same budget would be cut off at the same place
             else:
                 try:
                     return output_model.model_validate_json(_final_text(response.content))

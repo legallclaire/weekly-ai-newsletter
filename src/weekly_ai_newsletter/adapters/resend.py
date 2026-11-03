@@ -10,8 +10,8 @@ from weekly_ai_newsletter.domain.models import OutgoingEmail
 
 RESEND_API_URL = "https://api.resend.com/emails"
 _RETRY_STATUSES = frozenset({409, 429, 500, 502, 503, 504})
-# Same idempotency key with a different body: this issue was already delivered.
-_ALREADY_SENT = "invalid_idempotent_request"
+# Same idempotency key with a different body: an issue with other content went out today.
+_KEY_REUSED = "invalid_idempotent_request"
 
 
 class ResendEmailSender:
@@ -44,9 +44,13 @@ class ResendEmailSender:
                 continue
             if not response.is_error:
                 return
-            error = f"Resend rejected the email ({response.status_code}): {response.text[:300]}"
-            if response.status_code == 409 and _error_name(response) == _ALREADY_SENT:
-                return
+            # The body can quote addresses; keep it out of the error, which may be published.
+            name = _error_name(response)
+            error = f"Resend rejected the email ({response.status_code} {name or 'error'})"
+            if name == _KEY_REUSED:
+                raise EmailDeliveryError(
+                    "an issue with different content was already sent today; nothing was sent"
+                )
             if response.status_code not in _RETRY_STATUSES:
                 break
         raise EmailDeliveryError(error)

@@ -10,9 +10,9 @@ from datetime import date, timedelta
 from weekly_ai_newsletter.config import AppConfig, FeedConfig
 from weekly_ai_newsletter.domain.errors import (
     LLMOutputError,
-    NewsletterError,
     PipelineError,
     SourceError,
+    describe_error,
 )
 from weekly_ai_newsletter.domain.history import History, HistoryKind
 from weekly_ai_newsletter.domain.models import (
@@ -65,23 +65,6 @@ class Delivery:
     sender: EmailSender
     from_address: str
     to_address: str
-
-
-def describe_error(exc: Exception) -> str:
-    """A short error description for the public job summary.
-
-    Our own errors carry messages written for it; third-party messages can hold URLs with
-    query strings or API response bodies, so only their status and host are kept (the full
-    error stays in the run log).
-    """
-    if isinstance(exc, NewsletterError):
-        return f"{type(exc).__name__}: {exc}"
-    # HTTP client errors (httpx, the Anthropic SDK) expose `.response` and `.request`.
-    status = getattr(getattr(exc, "response", None), "status_code", None)
-    if status is None:
-        return type(exc).__name__
-    host = getattr(getattr(getattr(exc, "request", None), "url", None), "host", None)
-    return f"HTTP {status} from {host}" if host else f"HTTP {status}"
 
 
 @dataclass
@@ -186,6 +169,10 @@ class NewsletterPipeline:
         if self._delivery is None:
             raise PipelineError("email delivery is not configured")
         newsletter = result.newsletter
+        archive_dir = self._config.settings.archive_dir
+        archive_path = archive_dir / f"{newsletter.issue_date.isoformat()}.html"
+        if archive_path.exists():
+            raise PipelineError(f"the {newsletter.issue_date} issue was already sent")
         self._delivery.sender.send(
             OutgoingEmail(
                 sender=self._delivery.from_address,
@@ -196,13 +183,16 @@ class NewsletterPipeline:
                 idempotency_key=f"weekly-ai-newsletter-{newsletter.issue_date.isoformat()}",
             )
         )
-        archive_dir = self._config.settings.archive_dir
-        archive_dir.mkdir(parents=True, exist_ok=True)
-        archive_path = archive_dir / f"{newsletter.issue_date.isoformat()}.html"
-        archive_path.write_text(result.rendered.html, encoding="utf-8")
-        history = self._deps.history.load()
-        _record_sent(history, newsletter)
-        self._deps.history.save(history)
+        try:
+            archive_dir.mkdir(parents=True, exist_ok=True)
+            archive_path.write_text(result.rendered.html, encoding="utf-8")
+            history = self._deps.history.load()
+            _record_sent(history, newsletter)
+            self._deps.history.save(history)
+        except OSError as exc:
+            raise PipelineError(
+                f"the email was sent but the archive or history could not be saved: {exc}"
+            ) from exc
 
     def _section[T](self, name: str, report: RunReport, build: Callable[[], list[T]]) -> Section[T]:
         try:

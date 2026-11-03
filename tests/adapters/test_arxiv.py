@@ -34,11 +34,12 @@ def atom(*entries: str) -> str:
 
 def test_fetches_pages_until_short_page_and_filters_window() -> None:
     pages = {
-        "0": atom(
+        "0": atom_with_total(
+            3,
             entry("2610.00001", "2026-10-28T10:00:00Z"),
             entry("2610.00002", "2026-10-29T10:00:00Z"),
         ),
-        "2": atom(entry("2610.00003", "2026-11-02T01:00:00Z")),
+        "2": atom_with_total(3, entry("2610.00003", "2026-11-02T01:00:00Z")),
     }
     requests: list[httpx.Request] = []
 
@@ -68,7 +69,9 @@ def test_fetches_pages_until_short_page_and_filters_window() -> None:
 
 
 def test_empty_week_returns_no_papers() -> None:
-    client = httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(200, text=atom())))
+    client = httpx.Client(
+        transport=httpx.MockTransport(lambda r: httpx.Response(200, text=atom_with_total(0)))
+    )
     assert ArxivPaperSource(client, sleep=lambda _: None).fetch(["cs.AI"], WINDOW) == []
 
 
@@ -110,4 +113,13 @@ def test_api_error_entry_is_a_source_error() -> None:
     client = httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(200, text=error)))
     source = ArxivPaperSource(client, page_size=10, sleep=lambda _: None)
     with pytest.raises(SourceError, match="incorrect id format for x"):
+        source.fetch(["cs.AI"], WINDOW)
+
+
+def test_page_without_a_result_count_is_a_source_error() -> None:
+    # Without totalResults a truncated page cannot be told from the last one.
+    page = atom(entry("2610.00001", "2026-10-28T10:00:00Z"))
+    client = httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(200, text=page)))
+    source = ArxivPaperSource(client, page_size=10, sleep=lambda _: None)
+    with pytest.raises(SourceError, match="result count"):
         source.fetch(["cs.AI"], WINDOW)

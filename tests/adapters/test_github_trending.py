@@ -38,3 +38,22 @@ def test_fetches_each_language_and_dedupes() -> None:
     repos = source.fetch_weekly()
     assert paths == ["/trending?since=weekly", "/trending/python?since=weekly"]
     assert [r.full_name for r in repos] == ["acme/agent-kit", "someone/awesome-llm"]
+
+
+def test_one_failing_language_page_keeps_the_others() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/trending/python":
+            return httpx.Response(404)
+        return httpx.Response(200, text=FIXTURE)
+
+    source = GithubTrendingSource(
+        httpx.Client(transport=httpx.MockTransport(handler)), languages=("", "python")
+    )
+    assert [r.full_name for r in source.fetch_weekly()] == ["acme/agent-kit", "someone/awesome-llm"]
+
+
+def test_every_language_page_failing_is_a_source_error() -> None:
+    transport = httpx.MockTransport(lambda r: httpx.Response(200, text="<html></html>"))
+    source = GithubTrendingSource(httpx.Client(transport=transport), languages=("", "python"))
+    with pytest.raises(SourceError):
+        source.fetch_weekly()

@@ -32,3 +32,11 @@ def test_second_trigger_on_the_same_day_does_not_send(tmp_path: Path) -> None:
     assert should_send(now, tmp_path)
     (tmp_path / "2026-11-04.html").write_text("sent")
     assert not should_send(now, tmp_path)
+
+
+def test_any_time_ignores_the_hour_but_not_the_archive(tmp_path: Path) -> None:
+    afternoon = datetime(2026, 11, 4, 15, 0, tzinfo=UTC)
+    assert not should_send(afternoon, tmp_path)
+    assert should_send(afternoon, tmp_path, any_time=True)
+    (tmp_path / "2026-11-04.html").write_text("sent")
+    assert not should_send(afternoon, tmp_path, any_time=True)
