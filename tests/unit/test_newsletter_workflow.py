@@ -1,4 +1,5 @@
 import os
+import re
 import subprocess
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
@@ -9,11 +10,12 @@ import yaml
 
 from weekly_ai_newsletter.scheduling import is_send_time
 
-WORKFLOW = Path(__file__).parents[2] / ".github" / "workflows" / "newsletter.yml"
+WORKFLOWS = Path(__file__).parents[2] / ".github" / "workflows"
+WORKFLOW = WORKFLOWS / "newsletter.yml"
 
 
-def _workflow() -> Any:
-    return yaml.safe_load(WORKFLOW.read_text())
+def _workflow(path: Path = WORKFLOW) -> Any:
+    return yaml.safe_load(path.read_text())
 
 
 def _cron_times(day: date) -> list[datetime]:
@@ -35,8 +37,8 @@ def test_a_trigger_lands_at_seven_paris_with_a_backup(wednesday: date) -> None:
     assert not is_send_time(min(on_time) - timedelta(hours=1))
 
 
-def _step(name: str) -> str:
-    [step] = [s for s in _workflow()["jobs"]["send"]["steps"] if s.get("name") == name]
+def _step(name: str, job: str = "send") -> str:
+    [step] = [s for s in _workflow()["jobs"][job]["steps"] if s.get("name") == name]
     return str(step["run"])
 
 
@@ -59,8 +61,27 @@ def test_send_gate_fails_loudly_when_the_guard_crashes(tmp_path: Path) -> None:
 
 
 def test_history_commit_survives_a_moved_default_branch() -> None:
-    script = _step("Commit archive and history")
+    script = _step("Commit archive and history", job="commit")
     assert "git pull --rebase" in script
+
+
+def test_only_the_commit_job_can_write_to_the_repository() -> None:
+    workflow = _workflow()
+    assert workflow["permissions"] == {"contents": "read"}
+    writers = [name for name, job in workflow["jobs"].items() if "permissions" in job]
+    assert writers == ["commit"]
+    assert not any("uv" in step.get("run", "") for step in workflow["jobs"]["commit"]["steps"])
+
+
+@pytest.mark.parametrize("path", sorted(WORKFLOWS.glob("*.yml")), ids=lambda p: p.name)
+def test_actions_are_pinned_and_checkouts_drop_credentials(path: Path) -> None:
+    for job in _workflow(path)["jobs"].values():
+        for step in job["steps"]:
+            if "uses" not in step:
+                continue
+            assert re.fullmatch(r"[\w.-]+/[\w.-]+@[0-9a-f]{40}", step["uses"]), step["uses"]
+            if step["uses"].startswith("actions/checkout@"):
+                assert step["with"]["persist-credentials"] is False
 
 
 def test_uv_run_does_not_reinstall_dev_dependencies() -> None:
