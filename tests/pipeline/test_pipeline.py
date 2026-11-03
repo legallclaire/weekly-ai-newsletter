@@ -1,3 +1,5 @@
+import threading
+from dataclasses import replace
 from datetime import UTC, date, datetime
 from pathlib import Path
 
@@ -17,8 +19,11 @@ from tests.fakes import (
     happy_llm,
     make_config,
 )
+from weekly_ai_newsletter.config import FeedConfig
 from weekly_ai_newsletter.domain.errors import PipelineError, SourceError
 from weekly_ai_newsletter.domain.history import History, HistoryKind
+from weekly_ai_newsletter.domain.models import FeedItem
+from weekly_ai_newsletter.domain.window import TimeWindow
 from weekly_ai_newsletter.pipeline import Delivery, Dependencies, NewsletterPipeline
 
 RUN_DATE = date(2026, 11, 4)
@@ -202,3 +207,35 @@ def test_failure_after_sending_says_the_email_went_out(tmp_path: Path) -> None:
     with pytest.raises(PipelineError, match="sent"):
         pipeline.publish(pipeline.build(RUN_DATE))
     assert len(email.sent) == 1
+
+
+class RendezvousFeedSource:
+    """News feeds only answer once all of them are being fetched at the same time."""
+
+    def __init__(self, urls: set[str]) -> None:
+        self._urls = urls
+        self._barrier = threading.Barrier(len(urls), timeout=2)
+
+    def fetch(self, name: str, url: str, window: TimeWindow) -> list[FeedItem]:
+        if url not in self._urls:
+            return []
+        self._barrier.wait()
+        return [make_feed_item(f"{url}/post", title=f"Post from {name}")]
+
+
+def test_feeds_of_a_section_are_fetched_concurrently(tmp_path: Path) -> None:
+    feeds = [FeedConfig(name=f"Lab {n}", url=f"https://lab{n}.example/feed") for n in range(3)]
+    base = make_config(tmp_path)
+    config = replace(base, sources=base.sources.model_copy(update={"news": feeds}))
+    deps = Dependencies(
+        papers=FakePaperSource([]),
+        feeds=RendezvousFeedSource({feed.url for feed in feeds}),
+        trending=FakeTrendingSource([]),
+        repo_search=FakeRepoSearchSource(),
+        llm=happy_llm(),
+        history=InMemoryHistoryStore(),
+    )
+    result = NewsletterPipeline(config, deps).build(RUN_DATE)
+    assert result.newsletter.news.available
+    assert len(result.newsletter.news.items) == 3
+    assert not result.report.warnings

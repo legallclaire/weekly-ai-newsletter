@@ -13,6 +13,14 @@ def make_http_client(timeout: float = 30.0) -> httpx.Client:
     return httpx.Client(timeout=timeout, follow_redirects=True, headers={"User-Agent": USER_AGENT})
 
 
+def github_headers(token: str | None) -> dict[str, str]:
+    """Headers for the GitHub REST API; a token raises the rate limit from 60 to 5000/h."""
+    headers = {"Accept": "application/vnd.github+json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    return headers
+
+
 def get_with_retry(
     client: httpx.Client,
     url: str,

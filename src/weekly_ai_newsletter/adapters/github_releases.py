@@ -6,7 +6,7 @@ from typing import Any
 
 import httpx
 
-from weekly_ai_newsletter.adapters.http import get_with_retry
+from weekly_ai_newsletter.adapters.http import get_with_retry, github_headers
 from weekly_ai_newsletter.domain.models import FeedItem
 from weekly_ai_newsletter.domain.window import TimeWindow
 from weekly_ai_newsletter.ports import FeedSource
@@ -25,9 +25,7 @@ class GithubReleasesSource:
 
     def __init__(self, client: httpx.Client, *, token: str | None = None) -> None:
         self._client = client
-        self._headers = {"Accept": "application/vnd.github+json"}
-        if token:
-            self._headers["Authorization"] = f"Bearer {token}"
+        self._headers = github_headers(token)
 
     def fetch(self, name: str, url: str, window: TimeWindow) -> list[FeedItem]:
         match = _RELEASES_FEED.match(url)

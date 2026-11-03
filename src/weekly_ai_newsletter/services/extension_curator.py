@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from weekly_ai_newsletter.domain.models import CuratedExtension, ExtensionRepo
 from weekly_ai_newsletter.ports import LLMClient
 from weekly_ai_newsletter.prompts import LANGUAGE_NAMES, render_prompt
+from weekly_ai_newsletter.services.verdicts import kept_by_verdict
 
 
 class ExtensionVerdict(BaseModel):
@@ -56,13 +57,10 @@ class ExtensionCurator:
             indent=2,
         )
         answer = self._llm.structured(system=system, prompt=prompt, output_model=ExtensionVerdicts)
-        pending = {repo.full_name: repo for repo in repos}
-        kept: list[CuratedExtension] = []
-        for verdict in answer.verdicts:
-            repo = pending.pop(verdict.full_name, None)
-            if repo is not None and verdict.keep:
-                is_mcp = not self._mcp_topics.isdisjoint(repo.topics)
-                kept.append(CuratedExtension(repo, verdict.why_interesting, is_mcp))
+        kept = [
+            CuratedExtension(repo, why, is_mcp=not self._mcp_topics.isdisjoint(repo.topics))
+            for repo, why in kept_by_verdict(repos, answer.verdicts, name=lambda r: r.full_name)
+        ]
         kept.sort(key=lambda c: (-c.repo.stars, c.repo.full_name))
         selected: list[CuratedExtension] = []
         mcp_count = 0
