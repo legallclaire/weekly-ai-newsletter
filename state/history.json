@@ -1,0 +1,37 @@
+{
+  "devtools": {
+    "https://github.blog/changelog/2026-10-28-github-enterprise-now-includes-access-to-github-copilot": "2026-11-03",
+    "https://github.com/anthropics/claude-code/releases/tag/v2.1.312": "2026-11-03",
+    "https://github.com/anthropics/claude-code/releases/tag/v2.1.314": "2026-11-03",
+    "https://github.com/anthropics/claude-code/releases/tag/v2.1.316": "2026-11-03",
+    "https://github.com/openai/codex/releases/tag/rust-v0.165.0": "2026-11-03",
+    "https://github.com/openai/codex/releases/tag/rust-v0.166.0": "2026-11-03"
+  },
+  "extensions": {
+    "caru-ini/stack-diagram": "2026-11-03",
+    "daveebbelaar/bama": "2026-11-03",
+    "haydenschmitty/floorplan": "2026-11-03",
+    "morganlinton/BeautifulRust": "2026-11-03",
+    "reason-machines/reason-network": "2026-11-03"
+  },
+  "news": {
+    "https://deepmind.google/blog/gemini-4-carbon-our-next-frontier-model/": "2026-11-03",
+    "https://deepmind.google/blog/genie-4-a-new-generation-of-world-simulation/": "2026-11-03",
+    "https://huggingface.co/blog/mistral-large4": "2026-11-03",
+    "https://openai.com/index/helping-websites-express-ai-training-preferences": "2026-11-03",
+    "https://openai.com/index/how-we-detect-frontier-model-misalignment": "2026-11-03",
+    "https://simonwillison.net/2026/Oct/28/github-octoverse-2026/": "2026-11-03"
+  },
+  "papers": {
+    "2610.37648": "2026-11-03",
+    "2610.41172": "2026-11-03",
+    "2611.00391": "2026-11-03"
+  },
+  "repos": {
+    "Graphify-Labs/graphify": "2026-11-03",
+    "affaan-m/ECC": "2026-11-03",
+    "cloudflare/security-audit-skill": "2026-11-03",
+    "obra/superpowers": "2026-11-03",
+    "thedotmack/claude-mem": "2026-11-03"
+  }
+}
