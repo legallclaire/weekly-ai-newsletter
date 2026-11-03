@@ -178,3 +178,27 @@ def test_report_keeps_raw_third_party_errors_out_of_the_public_summary(tmp_path:
     assert result.report.warnings == ["feed Lab failed: HTTP 403 from feeds.example"]
     assert result.report.failures["repos"] == "RuntimeError"
     assert "s3cret" not in result.report.to_markdown()
+
+
+def test_publish_refuses_an_issue_already_archived(tmp_path: Path) -> None:
+    email = FakeEmailSender()
+    pipeline = build(tmp_path, email=email)
+    result = pipeline.build(RUN_DATE)
+    (tmp_path / "archive").mkdir()
+    (tmp_path / "archive" / "2026-11-04.html").write_text("already sent")
+    with pytest.raises(PipelineError, match="already"):
+        pipeline.publish(result)
+    assert email.sent == []
+
+
+class BrokenHistoryStore(InMemoryHistoryStore):
+    def save(self, history: History) -> None:
+        raise OSError("disk full")
+
+
+def test_failure_after_sending_says_the_email_went_out(tmp_path: Path) -> None:
+    email = FakeEmailSender()
+    pipeline = build(tmp_path, email=email, history=BrokenHistoryStore())
+    with pytest.raises(PipelineError, match="sent"):
+        pipeline.publish(pipeline.build(RUN_DATE))
+    assert len(email.sent) == 1

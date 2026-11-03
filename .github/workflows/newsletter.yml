@@ -33,12 +33,11 @@ jobs:
       - name: Check send time (Europe/Paris)
         id: gate
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "send=true" >> "$GITHUB_OUTPUT"
-          else
-            send=$(uv run newsletter should-send)
-            echo "send=$send" >> "$GITHUB_OUTPUT"
-          fi
+          # Manual runs may send at any hour, but never twice on the same day.
+          flags=""
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then flags="--any-time"; fi
+          send=$(uv run newsletter should-send $flags)
+          echo "send=$send" >> "$GITHUB_OUTPUT"
 
       - name: Build and send the newsletter
         if: steps.gate.outputs.send == 'true'

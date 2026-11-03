@@ -52,3 +52,13 @@ def test_search_failure_is_a_source_error() -> None:
     source = GithubRepoSearchSource(httpx.Client(transport=transport), sleep=lambda _: None)
     with pytest.raises(SourceError):
         source.search(["mcp-server"], created_after=date(2026, 10, 5), min_stars=50)
+
+
+def test_search_error_keeps_the_query_out_of_the_message() -> None:
+    transport = httpx.MockTransport(lambda r: httpx.Response(422, json={"message": "bad"}))
+    source = GithubRepoSearchSource(httpx.Client(transport=transport), sleep=lambda _: None)
+    with pytest.raises(SourceError) as excinfo:
+        source.search(["mcp-server"], created_after=date(2026, 10, 5), min_stars=50)
+    message = str(excinfo.value)
+    assert "HTTP 422 from api.github.com" in message and "mcp-server" in message
+    assert "created" not in message

@@ -74,8 +74,28 @@ def test_persistent_server_error_is_a_delivery_error() -> None:
         sender.send(EMAIL)
 
 
-def test_idempotency_conflict_means_already_sent() -> None:
+def test_idempotency_key_reused_with_new_content_is_a_delivery_error() -> None:
+    # Resend answers 409 when the key was used with a *different* body: today's issue went out
+    # with other content, so this one was not delivered and must not be recorded as sent.
     body = {"name": "invalid_idempotent_request", "message": "Same key, different payload"}
-    transport = httpx.MockTransport(lambda r: httpx.Response(409, json=body))
-    sender = ResendEmailSender(httpx.Client(transport=transport), api_key="k", sleep=lambda _: None)
-    sender.send(EMAIL)  # does not raise: this issue was already delivered
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(409, json=body)
+
+    sender = ResendEmailSender(
+        httpx.Client(transport=httpx.MockTransport(handler)), api_key="k", sleep=lambda _: None
+    )
+    with pytest.raises(EmailDeliveryError, match="already sent"):
+        sender.send(EMAIL)
+    assert len(requests) == 1
+
+
+def test_rejection_names_the_error_without_echoing_the_response() -> None:
+    body = {"name": "validation_error", "message": "You can only send to me@example.com"}
+    transport = httpx.MockTransport(lambda r: httpx.Response(403, json=body))
+    sender = ResendEmailSender(httpx.Client(transport=transport), api_key="k")
+    with pytest.raises(EmailDeliveryError, match="403 validation_error") as excinfo:
+        sender.send(EMAIL)
+    assert "me@example.com" not in str(excinfo.value)

@@ -16,20 +16,25 @@ from tests.fakes import (
 )
 from weekly_ai_newsletter import cli
 from weekly_ai_newsletter.config import AppConfig, Secrets
+from weekly_ai_newsletter.domain.errors import SourceError
 from weekly_ai_newsletter.pipeline import Dependencies, NewsletterPipeline
 
 REPO_CONFIG = Path(__file__).resolve().parents[2] / "config"
 
 
 def fake_build_pipeline(
-    config: AppConfig, secrets: Secrets, http: httpx.Client
+    config: AppConfig,
+    secrets: Secrets,
+    http: httpx.Client,
+    *,
+    trending: FakeTrendingSource | None = None,
 ) -> NewsletterPipeline:
     deps = Dependencies(
         papers=FakePaperSource([make_paper(title="Agent planning")]),
         feeds=FakeFeedSource(
             {NEWS_FEED: [make_feed_item()], DEVTOOLS_FEED: [make_feed_item("https://gh.example/v")]}
         ),
-        trending=FakeTrendingSource([make_repo()]),
+        trending=trending or FakeTrendingSource([make_repo()]),
         repo_search=FakeRepoSearchSource(),
         llm=happy_llm(),
         history=InMemoryHistoryStore(),
@@ -85,3 +90,35 @@ def test_github_summary_is_written(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     monkeypatch.setattr(cli, "build_pipeline", fake_build_pipeline)
     assert cli.main(run_args(tmp_path / "p.html")) == 0
     assert "| papers |" in summary.read_text()
+
+
+def test_failed_send_still_writes_the_summary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    summary = tmp_path / "summary.md"
+    for name in ("ANTHROPIC_API_KEY", "RESEND_API_KEY", "SENDER_EMAIL", "RECIPIENT_EMAIL"):
+        monkeypatch.setenv(name, "x@example.com")
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
+    monkeypatch.setattr(cli, "build_pipeline", fake_build_pipeline)  # has no email delivery
+    args = [a for a in run_args(tmp_path / "p.html") if a != "--dry-run"]
+    assert cli.main(args) == 1
+    assert "| papers |" in summary.read_text()
+
+
+def test_annotations_escape_multiline_errors(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def broken_trending(
+        config: AppConfig, secrets: Secrets, http: httpx.Client
+    ) -> NewsletterPipeline:
+        failing = FakeTrendingSource(SourceError("line one\nline two 100%"))
+        return fake_build_pipeline(config, secrets, http, trending=failing)
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    monkeypatch.setattr(cli, "build_pipeline", broken_trending)
+    assert cli.main(run_args(tmp_path / "p.html")) == 0
+    out = capsys.readouterr().out
+    assert (
+        "::warning title=Section unavailable::repos: SourceError: line one%0Aline two 100%25" in out
+    )

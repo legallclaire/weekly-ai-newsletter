@@ -57,9 +57,9 @@ Design choices:
   model's schema; invalid output is retried once, then the batch is skipped.
 - **Nothing missed on dev tools.** GitHub's release feeds are capped at 10 entries, which
   busy projects exceed with pre-releases, so releases are read through the GitHub API.
-- **Exactly one email per week.** Two UTC crons cover daylight saving time, a guard keeps
-  the one at 07:00 Paris, and the archive file plus a Resend idempotency key prevent
-  duplicates.
+- **Exactly one email per week.** Three UTC triggers cover daylight saving time and late
+  runs, a guard sends between 07:00 and 09:59 Paris, and the archive file plus a Resend
+  idempotency key prevent duplicates.
 - **Tests run offline**: fakes for every port, recorded fixtures for every adapter.
 
 ## Run it locally
@@ -80,7 +80,7 @@ uv run --env-file .env newsletter run --dry-run && open preview.html
 2. Add repository secrets: `ANTHROPIC_API_KEY`, `RESEND_API_KEY`, `SENDER_EMAIL`
    (e.g. `onboarding@resend.dev`), `RECIPIENT_EMAIL`.
 3. The `Weekly newsletter` workflow runs every Wednesday; trigger it manually from the
-   Actions tab to test.
+   Actions tab to test. A manual run sends at any hour, but never twice on the same day.
 
 ## Customise
 

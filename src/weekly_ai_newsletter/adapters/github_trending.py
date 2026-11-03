@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import re
 from collections.abc import Sequence
 
@@ -7,8 +8,10 @@ import httpx
 from bs4 import BeautifulSoup
 
 from weekly_ai_newsletter.adapters.http import get_with_retry
-from weekly_ai_newsletter.domain.errors import SourceError
+from weekly_ai_newsletter.domain.errors import SourceError, describe_error
 from weekly_ai_newsletter.domain.models import Repo
+
+logger = logging.getLogger(__name__)
 
 TRENDING_URL = "https://github.com/trending"
 _STARS_THIS_WEEK = re.compile(r"([\d,]+)\s+stars\s+this\s+week")
@@ -23,11 +26,20 @@ class GithubTrendingSource:
 
     def fetch_weekly(self) -> list[Repo]:
         repos: dict[str, Repo] = {}
+        failures: list[str] = []
         for language in self._languages:
             url = f"{TRENDING_URL}/{language}" if language else TRENDING_URL
-            response = get_with_retry(self._client, url, params={"since": "weekly"})
-            for repo in parse_trending_page(response.text):
+            try:
+                response = get_with_retry(self._client, url, params={"since": "weekly"})
+                page = parse_trending_page(response.text)
+            except (httpx.HTTPError, SourceError) as exc:  # other pages may still work
+                logger.warning("Trending page %s failed: %s", url, exc)
+                failures.append(f"{language or 'all'}: {describe_error(exc)}")
+                continue
+            for repo in page:
                 repos.setdefault(repo.full_name, repo)
+        if failures and not repos:
+            raise SourceError(f"every trending page failed ({'; '.join(failures)})")
         return list(repos.values())
 
 

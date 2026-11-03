@@ -66,3 +66,23 @@ def test_history_commit_survives_a_moved_default_branch() -> None:
 def test_uv_run_does_not_reinstall_dev_dependencies() -> None:
     # `uv sync --no-dev` installs the runtime only; a syncing `uv run` would add dev deps back.
     assert _workflow()["jobs"]["send"]["env"]["UV_NO_SYNC"] == "1"
+
+
+def test_manual_run_still_skips_an_issue_already_sent_today(tmp_path: Path) -> None:
+    fake_uv = tmp_path / "uv"
+    fake_uv.write_text(f'#!/bin/sh\necho "$@" > {tmp_path}/args\necho false\n')
+    fake_uv.chmod(0o755)
+    script = _step("Check send time (Europe/Paris)").replace(
+        "${{ github.event_name }}", "workflow_dispatch"
+    )
+    subprocess.run(
+        ["bash", "-e", "-c", script],
+        env={
+            **os.environ,
+            "PATH": f"{tmp_path}:{os.environ['PATH']}",
+            "GITHUB_OUTPUT": str(tmp_path / "out"),
+        },
+        check=True,
+    )
+    assert "should-send --any-time" in (tmp_path / "args").read_text()
+    assert (tmp_path / "out").read_text() == "send=false\n"

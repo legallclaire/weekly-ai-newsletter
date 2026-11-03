@@ -80,9 +80,11 @@ class ArxivPaperSource:
                 if "/api/errors" in entry.get("id", ""):
                     raise SourceError(f"arXiv API error: {_clean(entry.get('summary', ''))}")
             total = _total_results(parsed)
-            expected = min(self._page_size, max(total - start, 0)) if total is not None else 0
-            if len(entries) >= expected:
+            # Without the result count a truncated page looks like the last one; retry it.
+            if total is not None and len(entries) >= min(self._page_size, max(total - start, 0)):
                 return entries
+        if total is None:
+            raise SourceError(f"arXiv sent no result count at offset {start} after retries")
         raise SourceError(
             f"arXiv returned {len(entries)} of {total} results at offset {start} after retries"
         )

@@ -8,7 +8,7 @@ from datetime import date, datetime
 import httpx
 
 from weekly_ai_newsletter.adapters.http import get_with_retry
-from weekly_ai_newsletter.domain.errors import SourceError
+from weekly_ai_newsletter.domain.errors import SourceError, describe_error
 from weekly_ai_newsletter.domain.models import ExtensionRepo
 
 SEARCH_URL = "https://api.github.com/search/repositories"
@@ -55,7 +55,9 @@ class GithubRepoSearchSource:
                     sleep=self._sleep,
                 )
             except httpx.HTTPError as exc:
-                raise SourceError(f"GitHub search failed for topic {topic}: {exc}") from exc
+                raise SourceError(
+                    f"GitHub search failed for topic {topic}: {describe_error(exc)}"
+                ) from exc
             for raw in response.json().get("items", []):
                 repo = _to_repo(raw)
                 known = repos.get(repo.full_name)

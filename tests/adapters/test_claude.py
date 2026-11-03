@@ -94,3 +94,11 @@ def test_raises_after_refusal_and_invalid_output() -> None:
     )
     with pytest.raises(LLMOutputError, match="Answer"):
         claude_with(messages).structured(system="s", prompt="p", output_model=Answer)
+
+
+def test_truncated_output_is_retried_with_a_larger_budget() -> None:
+    messages = FakeMessages(
+        FakeResponse([text('{"val')], stop_reason="max_tokens"), FakeResponse([text({"value": 1})])
+    )
+    assert claude_with(messages).structured(system="s", prompt="p", output_model=Answer).value == 1
+    assert [call["max_tokens"] for call in messages.calls] == [1000, 2000]

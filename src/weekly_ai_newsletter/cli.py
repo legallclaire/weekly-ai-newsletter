@@ -13,7 +13,7 @@ from weekly_ai_newsletter.adapters.http import make_http_client
 from weekly_ai_newsletter.bootstrap import build_pipeline
 from weekly_ai_newsletter.config import Secrets, load_config
 from weekly_ai_newsletter.domain.errors import ConfigError, NewsletterError
-from weekly_ai_newsletter.pipeline import RunReport
+from weekly_ai_newsletter.pipeline import BuildResult, RunReport
 from weekly_ai_newsletter.scheduling import PARIS, should_send
 
 logger = logging.getLogger("weekly_ai_newsletter")
@@ -41,13 +41,18 @@ def _parser() -> argparse.ArgumentParser:
 
     check = commands.add_parser("should-send", help="print true when it is time to send")
     check.add_argument("--hour", type=int, default=7)
+    check.add_argument(
+        "--any-time", action="store_true", help="ignore the hour, only skip if already sent today"
+    )
     check.add_argument("--config-dir", type=Path, default=Path("config"))
     return parser
 
 
 def _should_send(args: argparse.Namespace) -> int:
     config = load_config(args.config_dir)
-    send = should_send(datetime.now(UTC), config.settings.archive_dir, hour=args.hour)
+    send = should_send(
+        datetime.now(UTC), config.settings.archive_dir, hour=args.hour, any_time=args.any_time
+    )
     print("true" if send else "false")
     return 0
 
@@ -60,6 +65,7 @@ def _run(args: argparse.Namespace) -> int:
         logger.error("%s", exc)
         return 2
     run_date: date = args.date or datetime.now(PARIS).date()
+    result: BuildResult | None = None
     with make_http_client() as http:
         pipeline = build_pipeline(config, secrets, http)
         try:
@@ -72,6 +78,8 @@ def _run(args: argparse.Namespace) -> int:
                 logger.info("Newsletter %s sent", run_date.isoformat())
         except NewsletterError as exc:
             logger.error("Newsletter run failed: %s", exc)
+            if result is not None:
+                _report(result.report)
             return 1
     _report(result.report)
     return 0
@@ -85,4 +93,9 @@ def _report(report: RunReport) -> None:
             summary.write(markdown)
     if os.environ.get("GITHUB_ACTIONS") == "true":
         for name, error in report.failures.items():
-            print(f"::warning title=Section unavailable::{name}: {error}")
+            print(f"::warning title=Section unavailable::{_escape(f'{name}: {error}')}")
+
+
+def _escape(message: str) -> str:
+    """Encode a workflow-command message so multi-line errors stay in one annotation."""
+    return message.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
