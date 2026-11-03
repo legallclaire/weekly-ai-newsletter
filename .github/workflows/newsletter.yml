@@ -24,10 +24,10 @@ jobs:
       # `uv sync --no-dev` below installs the runtime only; keep `uv run` from syncing dev deps.
       UV_NO_SYNC: "1"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v7
       - run: uv sync --locked --no-dev
 
       - name: Check send time (Europe/Paris)
