@@ -1,3 +1,4 @@
+import re
 from datetime import date
 
 from tests.factories import make_extension, make_paper, make_repo, make_score
@@ -139,3 +140,9 @@ def test_extensions_section_shows_stars_and_marks_mcp_servers() -> None:
     assert "https://github.com/acme/review-skill" in rendered.html
     assert "1\u202f234 étoiles" in rendered.text
     assert "acme/db-mcp (MCP" in rendered.text
+
+
+def test_english_output_has_no_space_before_punctuation() -> None:
+    rendered = NewsletterRenderer().render(newsletter(language="en"))
+    for text in (rendered.text, rendered.html):
+        assert not re.search("[ \u00a0\u202f][:;!?]", text)

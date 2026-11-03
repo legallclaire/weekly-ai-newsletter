@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
+from typing import Any
 
 import httpx
 
@@ -12,6 +13,7 @@ from weekly_ai_newsletter.ports import FeedSource
 
 _RELEASES_FEED = re.compile(r"^https://github\.com/([^/]+)/([^/]+)/releases\.atom$")
 RELEASES_PER_PAGE = 30
+MAX_PAGES = 5  # 150 releases: enough for one week of the busiest tools
 
 
 class GithubReleasesSource:
@@ -32,29 +34,43 @@ class GithubReleasesSource:
         if match is None:
             raise ValueError(f"not a GitHub releases feed: {url}")
         owner, repo = match.groups()
+        items: list[FeedItem] = []
+        for page in range(1, MAX_PAGES + 1):
+            releases = self._page(owner, repo, page)
+            for release in releases:
+                if release.get("draft") or not release.get("published_at"):
+                    continue
+                published = _published(release)
+                if release.get("prerelease") or not window.contains(published):
+                    continue
+                items.append(
+                    FeedItem(
+                        title=release.get("name") or release["tag_name"],
+                        url=release["html_url"],
+                        summary=release.get("body") or "",
+                        published=published,
+                        source=name,
+                    )
+                )
+            # Newest first: stop once a page is short or reaches back past the window.
+            dated = [_published(r) for r in releases if r.get("published_at")]
+            if len(releases) < RELEASES_PER_PAGE or (dated and min(dated) < window.start):
+                break
+        return items
+
+    def _page(self, owner: str, repo: str, page: int) -> list[dict[str, Any]]:
         response = get_with_retry(
             self._client,
             f"https://api.github.com/repos/{owner}/{repo}/releases",
-            params={"per_page": RELEASES_PER_PAGE},
+            params={"per_page": RELEASES_PER_PAGE, "page": page},
             headers=self._headers,
         )
-        items: list[FeedItem] = []
-        for release in response.json():
-            if release.get("draft") or release.get("prerelease") or not release.get("published_at"):
-                continue
-            published = datetime.fromisoformat(release["published_at"].replace("Z", "+00:00"))
-            if not window.contains(published):
-                continue
-            items.append(
-                FeedItem(
-                    title=release.get("name") or release["tag_name"],
-                    url=release["html_url"],
-                    summary=release.get("body") or "",
-                    published=published,
-                    source=name,
-                )
-            )
-        return items
+        releases: list[dict[str, Any]] = response.json()
+        return releases
+
+
+def _published(release: dict[str, Any]) -> datetime:
+    return datetime.fromisoformat(release["published_at"].replace("Z", "+00:00"))
 
 
 class RoutingFeedSource:

@@ -76,6 +76,9 @@ class ArxivPaperSource:
             )
             parsed = feedparser.parse(response.text)
             entries: list[Any] = list(parsed.entries)
+            for entry in entries:
+                if "/api/errors" in entry.get("id", ""):
+                    raise SourceError(f"arXiv API error: {_clean(entry.get('summary', ''))}")
             total = _total_results(parsed)
             expected = min(self._page_size, max(total - start, 0)) if total is not None else 0
             if len(entries) >= expected:

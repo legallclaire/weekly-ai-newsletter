@@ -4,7 +4,11 @@ import httpx
 import pytest
 
 from tests.factories import make_feed_item
-from weekly_ai_newsletter.adapters.github_releases import GithubReleasesSource, RoutingFeedSource
+from weekly_ai_newsletter.adapters.github_releases import (
+    RELEASES_PER_PAGE,
+    GithubReleasesSource,
+    RoutingFeedSource,
+)
 from weekly_ai_newsletter.domain.models import FeedItem
 from weekly_ai_newsletter.domain.window import TimeWindow
 
@@ -82,3 +86,26 @@ def test_routing_sends_github_release_feeds_to_the_api_and_others_to_rss() -> No
     router = RoutingFeedSource(rss=RecordingSource("rss"), releases=RecordingSource("api"))
     assert router.fetch("Codex", FEED_URL, WINDOW)[0].source == "api"
     assert router.fetch("Blog", "https://blog.example/feed", WINDOW)[0].source == "rss"
+
+
+def test_pages_through_releases_until_the_window_is_covered() -> None:
+    pages = {
+        "1": [
+            release(f"v1.0.0-alpha.{n}", "2026-11-02T10:00:00Z", prerelease=True)
+            for n in range(RELEASES_PER_PAGE)
+        ],
+        "2": [release("v0.9.0", "2026-10-30T10:00:00Z"), release("v0.8.0", "2026-10-01T10:00:00Z")]
+        + [release(f"v0.7.{n}", "2026-09-01T10:00:00Z") for n in range(RELEASES_PER_PAGE - 2)],
+        "3": [release("v0.1.0", "2026-10-29T10:00:00Z")],  # must not be requested
+    }
+    requested: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        page = request.url.params.get("page", "1")
+        requested.append(page)
+        return httpx.Response(200, json=pages[page])
+
+    source = GithubReleasesSource(httpx.Client(transport=httpx.MockTransport(handler)))
+    items = source.fetch("Codex", FEED_URL, WINDOW)
+    assert [item.title for item in items] == ["Release v0.9.0"]
+    assert requested == ["1", "2"]

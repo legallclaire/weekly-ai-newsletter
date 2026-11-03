@@ -20,6 +20,9 @@ jobs:
   send:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      # `uv sync --no-dev` below installs the runtime only; keep `uv run` from syncing dev deps.
+      UV_NO_SYNC: "1"
     steps:
       - uses: actions/checkout@v4
         with:

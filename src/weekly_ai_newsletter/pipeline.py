@@ -8,7 +8,12 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta
 
 from weekly_ai_newsletter.config import AppConfig, FeedConfig
-from weekly_ai_newsletter.domain.errors import LLMOutputError, PipelineError, SourceError
+from weekly_ai_newsletter.domain.errors import (
+    LLMOutputError,
+    NewsletterError,
+    PipelineError,
+    SourceError,
+)
 from weekly_ai_newsletter.domain.history import History, HistoryKind
 from weekly_ai_newsletter.domain.models import (
     CuratedExtension,
@@ -60,6 +65,23 @@ class Delivery:
     sender: EmailSender
     from_address: str
     to_address: str
+
+
+def describe_error(exc: Exception) -> str:
+    """A short error description for the public job summary.
+
+    Our own errors carry messages written for it; third-party messages can hold URLs with
+    query strings or API response bodies, so only their status and host are kept (the full
+    error stays in the run log).
+    """
+    if isinstance(exc, NewsletterError):
+        return f"{type(exc).__name__}: {exc}"
+    # HTTP client errors (httpx, the Anthropic SDK) expose `.response` and `.request`.
+    status = getattr(getattr(exc, "response", None), "status_code", None)
+    if status is None:
+        return type(exc).__name__
+    host = getattr(getattr(getattr(exc, "request", None), "url", None), "host", None)
+    return f"HTTP {status} from {host}" if host else f"HTTP {status}"
 
 
 @dataclass
@@ -187,8 +209,8 @@ class NewsletterPipeline:
             return Section.ok(build())
         except Exception as exc:  # a broken section must never sink the whole newsletter
             logger.exception("Section %s failed", name)
-            report.failures[name] = f"{type(exc).__name__}: {exc}"
-            return Section.unavailable(str(exc))
+            report.failures[name] = describe_error(exc)
+            return Section.unavailable(describe_error(exc))
 
     def _collect_feeds(
         self, feeds: Sequence[FeedConfig], window: TimeWindow, report: RunReport
@@ -201,7 +223,7 @@ class NewsletterPipeline:
             except Exception as exc:  # one broken feed must not hide the others
                 failed += 1
                 logger.warning("Feed %s (%s) failed: %s", feed.name, feed.url, exc)
-                report.warnings.append(f"feed {feed.name} failed: {exc}")
+                report.warnings.append(f"feed {feed.name} failed: {describe_error(exc)}")
         if feeds and failed == len(feeds):
             raise SourceError("every feed of this section failed")
         return items

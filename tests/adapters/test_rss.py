@@ -62,3 +62,30 @@ def test_garbage_is_a_source_error() -> None:
 
 def test_html_to_text_collapses_whitespace() -> None:
     assert html_to_text("<p>a</p>\n<p>b  c</p>") == "a b c"
+
+
+def rss_item(title: str, link: str = "https://lab.example/post") -> str:
+    return f"""<?xml version="1.0"?><rss version="2.0"><channel><title>Lab</title>
+<item><title>{title}</title><link>{link}</link><description>x</description>
+  <pubDate>Thu, 29 Oct 2026 09:00:00 GMT</pubDate></item></channel></rss>"""
+
+
+def test_plain_text_titles_keep_angle_brackets() -> None:
+    [item] = source_serving(rss_item("Why &lt;think&gt; tags help")).fetch(
+        "Lab", "https://x", WINDOW
+    )
+    assert item.title == "Why <think> tags help"
+
+
+def test_html_titles_are_converted_to_text() -> None:
+    atom = """<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom">
+<entry><id>1</id><published>2026-10-29T09:00:00Z</published>
+  <link href="https://lab.example/post"/>
+  <title type="html">&lt;b&gt;Bold&lt;/b&gt; news</title></entry></feed>"""
+    [item] = source_serving(atom).fetch("Lab", "https://x", WINDOW)
+    assert item.title == "Bold news"
+
+
+@pytest.mark.parametrize("link", ["javascript:alert(1)", "ftp://lab.example/post"])
+def test_non_web_links_are_dropped(link: str) -> None:
+    assert source_serving(rss_item("Post", link)).fetch("Lab", "https://x", WINDOW) == []

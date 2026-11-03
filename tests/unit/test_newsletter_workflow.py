@@ -61,3 +61,8 @@ def test_send_gate_fails_loudly_when_the_guard_crashes(tmp_path: Path) -> None:
 def test_history_commit_survives_a_moved_default_branch() -> None:
     script = _step("Commit archive and history")
     assert "git pull --rebase" in script
+
+
+def test_uv_run_does_not_reinstall_dev_dependencies() -> None:
+    # `uv sync --no-dev` installs the runtime only; a syncing `uv run` would add dev deps back.
+    assert _workflow()["jobs"]["send"]["env"]["UV_NO_SYNC"] == "1"

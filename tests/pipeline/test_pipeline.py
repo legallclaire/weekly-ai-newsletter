@@ -1,6 +1,7 @@
 from datetime import UTC, date, datetime
 from pathlib import Path
 
+import httpx
 import pytest
 
 from tests.factories import make_extension, make_feed_item, make_paper, make_repo
@@ -160,3 +161,20 @@ def test_failing_extension_search_degrades_its_section_only(tmp_path: Path) -> N
     assert not result.newsletter.extensions.available
     assert result.newsletter.repos.available
     assert "rate limited" in result.report.failures["extensions"]
+
+
+def test_report_keeps_raw_third_party_errors_out_of_the_public_summary(tmp_path: Path) -> None:
+    request = httpx.Request("GET", "https://feeds.example/rss?key=s3cret")
+    forbidden = httpx.HTTPStatusError(
+        "403 for https://feeds.example/rss?key=s3cret",
+        request=request,
+        response=httpx.Response(403, request=request),
+    )
+    result = build(
+        tmp_path,
+        feeds=FakeFeedSource({NEWS_FEED: forbidden, DEVTOOLS_FEED: []}),
+        trending=FakeTrendingSource(RuntimeError("internal detail s3cret")),
+    ).build(RUN_DATE)
+    assert result.report.warnings == ["feed Lab failed: HTTP 403 from feeds.example"]
+    assert result.report.failures["repos"] == "RuntimeError"
+    assert "s3cret" not in result.report.to_markdown()

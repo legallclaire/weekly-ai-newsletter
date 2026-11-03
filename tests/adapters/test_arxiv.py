@@ -100,3 +100,14 @@ def test_persistently_truncated_results_are_a_source_error() -> None:
     source = ArxivPaperSource(client, page_size=10, sleep=lambda _: None)
     with pytest.raises(SourceError, match="5"):
         source.fetch(["cs.AI"], WINDOW)
+
+
+def test_api_error_entry_is_a_source_error() -> None:
+    error = atom(
+        "<entry><id>http://arxiv.org/api/errors#incorrect_id_format_for_x</id>"
+        "<title>Error</title><summary>incorrect id format for x</summary></entry>"
+    )
+    client = httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(200, text=error)))
+    source = ArxivPaperSource(client, page_size=10, sleep=lambda _: None)
+    with pytest.raises(SourceError, match="incorrect id format for x"):
+        source.fetch(["cs.AI"], WINDOW)

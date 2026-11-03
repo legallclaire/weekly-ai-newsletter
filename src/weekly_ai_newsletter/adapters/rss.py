@@ -3,6 +3,7 @@ from __future__ import annotations
 import calendar
 from datetime import UTC, datetime
 from typing import Any
+from urllib.parse import urlsplit
 
 import feedparser
 import httpx
@@ -29,11 +30,11 @@ class RssFeedSource:
         for entry in feed.entries:
             published = _published(entry)
             link = entry.get("link")
-            if published is None or not link or not window.contains(published):
+            if published is None or not _is_web_link(link) or not window.contains(published):
                 continue
             items.append(
                 FeedItem(
-                    title=html_to_text(entry.get("title", "")),
+                    title=_title(entry),
                     url=link,
                     summary=html_to_text(_body(entry)),
                     published=published,
@@ -46,6 +47,17 @@ class RssFeedSource:
 def html_to_text(html: str) -> str:
     text = BeautifulSoup(html, "html.parser").get_text(" ")
     return " ".join(text.split())
+
+
+def _title(entry: Any) -> str:
+    title = str(entry.get("title", ""))
+    if "html" in entry.get("title_detail", {}).get("type", ""):
+        return html_to_text(title)
+    return " ".join(title.split())  # plain text: "<think>" is part of the title, not markup
+
+
+def _is_web_link(link: str | None) -> bool:
+    return bool(link) and urlsplit(link).scheme in ("http", "https")
 
 
 def _published(entry: Any) -> datetime | None:
