@@ -23,7 +23,9 @@ from weekly_ai_newsletter.domain.models import (
     FeedItem,
     NewsItem,
     OutgoingEmail,
+    SecurityAlert,
     SelectedPaper,
+    Vulnerability,
 )
 from weekly_ai_newsletter.domain.newsletter import Newsletter, Section
 from weekly_ai_newsletter.domain.window import TimeWindow
@@ -35,6 +37,7 @@ from weekly_ai_newsletter.ports import (
     PaperSource,
     RepoSearchSource,
     TrendingSource,
+    VulnerabilitySource,
 )
 from weekly_ai_newsletter.rendering.renderer import NewsletterRenderer, RenderedNewsletter
 from weekly_ai_newsletter.services.dedup import drop_sent, unique_by
@@ -47,6 +50,7 @@ from weekly_ai_newsletter.services.paper_selection import SelectionRules, select
 from weekly_ai_newsletter.services.paper_writer import PaperWriter
 from weekly_ai_newsletter.services.repo_curator import RepoCurator
 from weekly_ai_newsletter.services.repo_filter import RepoRuleFilter
+from weekly_ai_newsletter.services.security_curator import SecurityCurator, merge_vulnerabilities
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +63,7 @@ class Dependencies:
     feeds: FeedSource
     trending: TrendingSource
     repo_search: RepoSearchSource
+    vulnerabilities: Sequence[VulnerabilitySource]
     llm: LLMClient
     history: HistoryStore
 
@@ -137,6 +142,9 @@ class NewsletterPipeline:
             max_mcp=settings.extensions.max_mcp,
             mcp_topics=settings.extensions.mcp_topics,
         )
+        self._security_curator = SecurityCurator(
+            deps.llm, language=settings.language, max_items=settings.security.max_items
+        )
         self._rules = SelectionRules(
             min_total=settings.papers.min_total,
             min_novelty=settings.papers.min_novelty,
@@ -162,6 +170,9 @@ class NewsletterPipeline:
                 "extensions",
                 report,
                 lambda: self._extensions(run_date, history, trending_names, report),
+            ),
+            security=self._section(
+                "security", report, lambda: self._security(window, history, report)
             ),
         )
         if newsletter.all_unavailable:
@@ -339,6 +350,37 @@ class NewsletterPipeline:
         )
         return curated
 
+    def _security(
+        self, window: TimeWindow, history: History, report: RunReport
+    ) -> list[SecurityAlert]:
+        batches: list[list[Vulnerability]] = []
+        for source in self._deps.vulnerabilities:
+            try:
+                batches.append(source.fetch(window))
+            except Exception as exc:  # the other source still has something to say
+                logger.warning("Vulnerability source %s failed: %s", source.name, exc)
+                report.warnings.append(f"{source.name} failed: {describe_error(exc)}")
+        if self._deps.vulnerabilities and not batches:
+            raise SourceError("every vulnerability source failed")
+        merged = merge_vulnerabilities(batches)
+        fresh = drop_sent(merged, key=lambda v: v.id, history=history, kind=HistoryKind.SECURITY)
+        # Exploited flaws sort first, so the cap only ever drops advisories.
+        candidates = fresh[: self._config.settings.security.max_candidates]
+        try:
+            alerts = self._security_curator.curate(candidates)
+        except LLMOutputError as exc:
+            logger.warning("Security write-ups failed: %s", exc)
+            report.warnings.append(
+                f"security: no write-ups ({describe_error(exc)}); exploited flaws listed alone"
+            )
+            alerts = self._security_curator.brief(candidates)
+        exploited = sum(v.exploited for v in merged)
+        report.stages["security"] = (
+            f"{sum(len(b) for b in batches)} fetched ({exploited} exploited) -> "
+            f"{len(candidates)} candidates -> {len(alerts)} shown"
+        )
+        return alerts
+
 
 def _record_sent(history: History, newsletter: Newsletter) -> None:
     on = newsletter.issue_date
@@ -352,4 +394,7 @@ def _record_sent(history: History, newsletter: Newsletter) -> None:
     history.record(HistoryKind.REPO, (r.repo.full_name for r in newsletter.repos.items), on)
     history.record(
         HistoryKind.EXTENSION, (e.repo.full_name for e in newsletter.extensions.items), on
+    )
+    history.record(
+        HistoryKind.SECURITY, (a.vulnerability.id for a in newsletter.security.items), on
     )

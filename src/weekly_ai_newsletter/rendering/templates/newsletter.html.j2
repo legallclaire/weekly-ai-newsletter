@@ -83,6 +83,32 @@
 {% endfor %}
 {% endcall %}
 
+{{ heading(labels.security) }}
+{% call section_body(newsletter.security, labels.empty) %}
+{# Write-ups first; exploited flaws without one follow as a compact list. #}
+{% set highlights = newsletter.security.items | selectattr("summary") | list %}
+{% set brief = newsletter.security.items | rejectattr("summary") | list %}
+{% for item in highlights %}
+{% set v = item.vulnerability %}
+<div style="margin:0 0 16px;">
+<a href="{{ v.url }}" style="color:#4338ca;font-weight:600;text-decoration:none;">{{ v.title }}</a>
+<span style="color:#71717a;font-size:13px;"> · {{ v.id }}{% if v.affected %} · {{ v.affected }}{% endif %}</span>
+{% if v.exploited %}<p style="margin:4px 0 0;color:#b91c1c;font-size:13px;font-weight:600;">{{ labels.exploited }}</p>{% endif %}
+<p style="margin:4px 0 0;">{{ item.summary | code }}</p>
+{% if v.fixed_in %}<p style="margin:4px 0 0;color:#52525b;font-size:13px;">{{ labels.fixed_in }} {{ v.fixed_in }}</p>{% endif %}
+</div>
+{% endfor %}
+{% if brief %}
+<h3 style="font-size:15px;margin:16px 0 6px;">{{ labels.also_exploited }}</h3>
+<ul style="margin:0;padding-left:20px;">
+{% for item in brief %}
+{% set v = item.vulnerability %}
+<li style="margin:0 0 6px;"><a href="{{ v.url }}" style="color:#4338ca;">{{ v.id }}</a> — {{ v.affected }} · {{ v.title }}</li>
+{% endfor %}
+</ul>
+{% endif %}
+{% endcall %}
+
 <p style="margin:32px 0 0;font-size:12px;color:#a1a1aa;">{{ labels.footer }}</p>
 </div>
 </div>

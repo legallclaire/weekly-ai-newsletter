@@ -12,6 +12,7 @@ class HistoryKind(StrEnum):
     DEVTOOL = "devtools"
     REPO = "repos"
     EXTENSION = "extensions"
+    SECURITY = "security"
 
 
 @dataclass

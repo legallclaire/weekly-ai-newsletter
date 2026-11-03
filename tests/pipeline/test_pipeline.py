@@ -6,25 +6,34 @@ from pathlib import Path
 import httpx
 import pytest
 
-from tests.factories import make_extension, make_feed_item, make_paper, make_repo
+from tests.factories import (
+    make_extension,
+    make_feed_item,
+    make_paper,
+    make_repo,
+    make_vulnerability,
+)
 from tests.fakes import (
     DEVTOOLS_FEED,
     NEWS_FEED,
     FakeEmailSender,
     FakeFeedSource,
+    FakeLLM,
     FakePaperSource,
     FakeRepoSearchSource,
     FakeTrendingSource,
+    FakeVulnerabilitySource,
     InMemoryHistoryStore,
     happy_llm,
     make_config,
 )
 from weekly_ai_newsletter.config import FeedConfig
-from weekly_ai_newsletter.domain.errors import PipelineError, SourceError
+from weekly_ai_newsletter.domain.errors import LLMOutputError, PipelineError, SourceError
 from weekly_ai_newsletter.domain.history import History, HistoryKind
 from weekly_ai_newsletter.domain.models import FeedItem
 from weekly_ai_newsletter.domain.window import TimeWindow
 from weekly_ai_newsletter.pipeline import Delivery, Dependencies, NewsletterPipeline
+from weekly_ai_newsletter.services.security_curator import SecuritySelection
 
 RUN_DATE = date(2026, 11, 4)
 
@@ -36,7 +45,9 @@ def build(
     feeds: FakeFeedSource | None = None,
     trending: FakeTrendingSource | None = None,
     extensions: FakeRepoSearchSource | None = None,
+    vulnerabilities: tuple[FakeVulnerabilitySource, ...] | None = None,
     history: InMemoryHistoryStore | None = None,
+    llm: FakeLLM | None = None,
     email: FakeEmailSender | None = None,
 ) -> NewsletterPipeline:
     deps = Dependencies(
@@ -50,7 +61,13 @@ def build(
         ),
         trending=trending or FakeTrendingSource([make_repo("acme/agent-kit")]),
         repo_search=extensions or FakeRepoSearchSource([make_extension("acme/review-skill")]),
-        llm=happy_llm(),
+        vulnerabilities=vulnerabilities
+        if vulnerabilities is not None
+        else (
+            FakeVulnerabilitySource("KEV", [make_vulnerability("CVE-2026-1001")]),
+            FakeVulnerabilitySource("Advisories", []),
+        ),
+        llm=llm or happy_llm(),
         history=history or InMemoryHistoryStore(),
     )
     delivery = Delivery(email, "from@x.dev", "to@x.dev") if email else None
@@ -75,6 +92,8 @@ def test_build_and_publish_happy_path(tmp_path: Path) -> None:
     assert saved.was_sent(HistoryKind.DEVTOOL, "https://gh.example/v2")
     assert saved.was_sent(HistoryKind.REPO, "acme/agent-kit")
     assert saved.was_sent(HistoryKind.EXTENSION, "acme/review-skill")
+    assert saved.was_sent(HistoryKind.SECURITY, "CVE-2026-1001")
+    assert "CVE-2026-1001" in sent.text
     assert "papers" in result.report.stages and not result.report.failures
 
 
@@ -95,6 +114,7 @@ def test_every_section_failing_is_fatal(tmp_path: Path) -> None:
         feeds=FakeFeedSource({NEWS_FEED: boom, DEVTOOLS_FEED: boom}),
         trending=FakeTrendingSource(boom),
         extensions=FakeRepoSearchSource(boom),
+        vulnerabilities=(FakeVulnerabilitySource("KEV", boom),),
     )
     with pytest.raises(PipelineError):
         pipeline.build(RUN_DATE)
@@ -232,6 +252,7 @@ def test_feeds_of_a_section_are_fetched_concurrently(tmp_path: Path) -> None:
         feeds=RendezvousFeedSource({feed.url for feed in feeds}),
         trending=FakeTrendingSource([]),
         repo_search=FakeRepoSearchSource(),
+        vulnerabilities=(),
         llm=happy_llm(),
         history=InMemoryHistoryStore(),
     )
@@ -239,3 +260,63 @@ def test_feeds_of_a_section_are_fetched_concurrently(tmp_path: Path) -> None:
     assert result.newsletter.news.available
     assert len(result.newsletter.news.items) == 3
     assert not result.report.warnings
+
+
+def test_security_merges_sources_and_skips_flaws_already_sent(tmp_path: Path) -> None:
+    previous = History()
+    previous.record(HistoryKind.SECURITY, ["CVE-2026-9"], date(2026, 10, 28))
+    kev = FakeVulnerabilitySource("KEV", [make_vulnerability("CVE-2026-1")])
+    advisories = FakeVulnerabilitySource(
+        "Advisories",
+        [
+            make_vulnerability("CVE-2026-1", exploited=False, affected="pip acme"),
+            make_vulnerability("CVE-2026-9", exploited=False),
+            make_vulnerability("GHSA-aaaa-bbbb-cccc", exploited=False),
+        ],
+    )
+    result = build(
+        tmp_path, vulnerabilities=(kev, advisories), history=InMemoryHistoryStore(previous)
+    ).build(RUN_DATE)
+
+    alerts = result.newsletter.security.items
+    assert [(a.vulnerability.id, a.vulnerability.exploited) for a in alerts] == [
+        ("CVE-2026-1", True),
+        ("GHSA-aaaa-bbbb-cccc", False),
+    ]
+    assert kev.windows == [TimeWindow.week_before(RUN_DATE)]
+    assert result.report.stages["security"] == "4 fetched (1 exploited) -> 2 candidates -> 2 shown"
+
+
+def test_one_broken_vulnerability_source_is_a_warning(tmp_path: Path) -> None:
+    sources = (
+        FakeVulnerabilitySource("KEV", [make_vulnerability("CVE-2026-1")]),
+        FakeVulnerabilitySource("Advisories", SourceError("down")),
+    )
+    result = build(tmp_path, vulnerabilities=sources).build(RUN_DATE)
+    assert [a.vulnerability.id for a in result.newsletter.security.items] == ["CVE-2026-1"]
+    assert any("Advisories" in warning for warning in result.report.warnings)
+
+
+def test_every_vulnerability_source_failing_makes_the_section_unavailable(tmp_path: Path) -> None:
+    sources = (FakeVulnerabilitySource("KEV", SourceError("down")),)
+    result = build(tmp_path, vulnerabilities=sources).build(RUN_DATE)
+    assert not result.newsletter.security.available
+    assert result.newsletter.news.available
+
+
+def test_exploited_flaws_are_still_listed_when_claude_fails(tmp_path: Path) -> None:
+    llm = happy_llm()
+    llm._responses[SecuritySelection] = LLMOutputError("no valid output")
+    sources = (
+        FakeVulnerabilitySource(
+            "KEV", [make_vulnerability("CVE-2026-1"), make_vulnerability("CVE-2026-2")]
+        ),
+        FakeVulnerabilitySource("Advisories", [make_vulnerability("CVE-2026-3", exploited=False)]),
+    )
+    result = build(tmp_path, vulnerabilities=sources, llm=llm).build(RUN_DATE)
+    alerts = result.newsletter.security.items
+    assert [(a.vulnerability.id, a.summary) for a in alerts] == [
+        ("CVE-2026-1", ""),
+        ("CVE-2026-2", ""),
+    ]
+    assert any("security" in warning for warning in result.report.warnings)

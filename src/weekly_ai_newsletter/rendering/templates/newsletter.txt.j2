@@ -68,5 +68,34 @@
 
 {% endfor %}
 {% endcall %}
+
+## {{ labels.security }}
+
+{% call section_body(newsletter.security, labels.empty) %}
+{% set highlights = newsletter.security.items | selectattr("summary") | list %}
+{% set brief = newsletter.security.items | rejectattr("summary") | list %}
+{% for item in highlights %}
+{% set v = item.vulnerability %}
+- {{ v.title }} ({{ v.id }}{% if v.affected %} · {{ v.affected }}{% endif %})
+  {{ v.url }}
+{% if v.exploited %}
+  {{ labels.exploited }}
+{% endif %}
+  {{ item.summary }}
+{% if v.fixed_in %}
+  {{ labels.fixed_in }} {{ v.fixed_in }}
+{% endif %}
+
+{% endfor %}
+{% if brief %}
+{{ labels.also_exploited }}
+{% for item in brief %}
+{% set v = item.vulnerability %}
+- {{ v.id }} — {{ v.affected }} · {{ v.title }}
+  {{ v.url }}
+{% endfor %}
+
+{% endif %}
+{% endcall %}
 --
 {{ labels.footer }}

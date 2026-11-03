@@ -1,6 +1,13 @@
 from datetime import UTC, datetime
 
-from weekly_ai_newsletter.domain.models import ExtensionRepo, FeedItem, Paper, PaperScore, Repo
+from weekly_ai_newsletter.domain.models import (
+    ExtensionRepo,
+    FeedItem,
+    Paper,
+    PaperScore,
+    Repo,
+    Vulnerability,
+)
 
 NOW = datetime(2026, 10, 30, 12, 0, tzinfo=UTC)
 
@@ -88,4 +95,23 @@ def make_extension(
         stars=stars,
         created_at=datetime(2026, 10, 20, tzinfo=UTC),
         topics=topics,
+    )
+
+
+def make_vulnerability(
+    vuln_id: str = "CVE-2026-1001",
+    *,
+    exploited: bool = True,
+    title: str = "Remote code execution",
+    affected: str = "Acme Gateway",
+    fixed_in: str = "",
+) -> Vulnerability:
+    return Vulnerability(
+        id=vuln_id,
+        title=title,
+        description="An attacker can run code.",
+        url=f"https://nvd.nist.gov/vuln/detail/{vuln_id}",
+        affected=affected,
+        exploited=exploited,
+        fixed_in=fixed_in,
     )

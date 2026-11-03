@@ -9,7 +9,14 @@ from typing import Protocol
 from pydantic import BaseModel
 
 from weekly_ai_newsletter.domain.history import History
-from weekly_ai_newsletter.domain.models import ExtensionRepo, FeedItem, OutgoingEmail, Paper, Repo
+from weekly_ai_newsletter.domain.models import (
+    ExtensionRepo,
+    FeedItem,
+    OutgoingEmail,
+    Paper,
+    Repo,
+    Vulnerability,
+)
 from weekly_ai_newsletter.domain.window import TimeWindow
 
 
@@ -30,6 +37,15 @@ class RepoSearchSource(Protocol):
         self, topics: Sequence[str], *, created_after: date, min_stars: int
     ) -> list[ExtensionRepo]:
         """Repositories tagged with any of `topics`, most starred first."""
+        ...
+
+
+class VulnerabilitySource(Protocol):
+    @property
+    def name(self) -> str: ...
+
+    def fetch(self, window: TimeWindow) -> list[Vulnerability]:
+        """Vulnerabilities published or flagged during `window`."""
         ...
 
 

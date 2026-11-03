@@ -36,6 +36,7 @@ def fake_build_pipeline(
         ),
         trending=trending or FakeTrendingSource([make_repo()]),
         repo_search=FakeRepoSearchSource(),
+        vulnerabilities=(),
         llm=happy_llm(),
         history=InMemoryHistoryStore(),
     )
