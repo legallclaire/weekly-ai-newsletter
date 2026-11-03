@@ -39,5 +39,11 @@ extensions:
            claude-code-plugin, mcp-server]
   mcp_topics: [mcp-server]
 
+# Flaws exploited in the wild (CISA KEV, all listed) and critical GitHub advisories;
+# Claude writes up the most important ones.
+security:
+  max_items: 5
+  max_candidates: 40
+
 history_path: state/history.json
 archive_dir: archive

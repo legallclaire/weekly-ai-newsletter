@@ -10,6 +10,7 @@ from weekly_ai_newsletter.domain.models import (
     CuratedRepo,
     DevToolGroup,
     NewsItem,
+    SecurityAlert,
     SelectedPaper,
 )
 
@@ -43,6 +44,7 @@ class Newsletter:
     papers: Section[SelectedPaper]
     repos: Section[CuratedRepo]
     extensions: Section[CuratedExtension]
+    security: Section[SecurityAlert]
 
     @property
     def sections(self) -> dict[str, Section[Any]]:
@@ -52,6 +54,7 @@ class Newsletter:
             "papers": self.papers,
             "repos": self.repos,
             "extensions": self.extensions,
+            "security": self.security,
         }
 
     @property

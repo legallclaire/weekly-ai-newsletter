@@ -5,7 +5,9 @@ from __future__ import annotations
 import httpx
 
 from weekly_ai_newsletter.adapters.arxiv import ArxivPaperSource
+from weekly_ai_newsletter.adapters.cisa_kev import CisaKevSource
 from weekly_ai_newsletter.adapters.claude import ClaudeClient
+from weekly_ai_newsletter.adapters.github_advisories import GithubAdvisorySource
 from weekly_ai_newsletter.adapters.github_releases import GithubReleasesSource, RoutingFeedSource
 from weekly_ai_newsletter.adapters.github_search import GithubRepoSearchSource
 from weekly_ai_newsletter.adapters.github_trending import GithubTrendingSource
@@ -26,6 +28,7 @@ def build_pipeline(config: AppConfig, secrets: Secrets, http: httpx.Client) -> N
         ),
         trending=GithubTrendingSource(http, languages=settings.repos.trending_languages),
         repo_search=GithubRepoSearchSource(http, token=github_token),
+        vulnerabilities=(CisaKevSource(http), GithubAdvisorySource(http, token=github_token)),
         llm=ClaudeClient.from_api_key(
             secrets.anthropic_api_key.get_secret_value(),
             model=settings.llm.model,

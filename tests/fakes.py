@@ -19,7 +19,14 @@ from weekly_ai_newsletter.config import (
     Sources,
 )
 from weekly_ai_newsletter.domain.history import History
-from weekly_ai_newsletter.domain.models import ExtensionRepo, FeedItem, OutgoingEmail, Paper, Repo
+from weekly_ai_newsletter.domain.models import (
+    ExtensionRepo,
+    FeedItem,
+    OutgoingEmail,
+    Paper,
+    Repo,
+    Vulnerability,
+)
 from weekly_ai_newsletter.domain.window import TimeWindow
 from weekly_ai_newsletter.services.devtools_curator import ChangePick, DevToolsSelection, ToolGroup
 from weekly_ai_newsletter.services.extension_curator import ExtensionVerdict, ExtensionVerdicts
@@ -27,6 +34,7 @@ from weekly_ai_newsletter.services.news_curator import NewsPick, NewsSelection
 from weekly_ai_newsletter.services.paper_scorer import PaperScoreBatch
 from weekly_ai_newsletter.services.paper_writer import PaperWriteup, PaperWriteupBatch
 from weekly_ai_newsletter.services.repo_curator import RepoVerdict, RepoVerdicts
+from weekly_ai_newsletter.services.security_curator import SecurityPick, SecuritySelection
 
 Handler = Callable[[str], BaseModel] | BaseModel | Exception
 
@@ -96,6 +104,19 @@ class FakeRepoSearchSource:
         if isinstance(self._repos, Exception):
             raise self._repos
         return list(self._repos)
+
+
+class FakeVulnerabilitySource:
+    def __init__(self, name: str, vulns: Sequence[Vulnerability] | Exception = ()) -> None:
+        self.name = name
+        self._vulns = vulns
+        self.windows: list[TimeWindow] = []
+
+    def fetch(self, window: TimeWindow) -> list[Vulnerability]:
+        self.windows.append(window)
+        if isinstance(self._vulns, Exception):
+            raise self._vulns
+        return list(self._vulns)
 
 
 class FakeEmailSender:
@@ -177,9 +198,15 @@ def happy_llm() -> FakeLLM:
             ]
         )
 
+    def security(prompt: str) -> BaseModel:
+        return SecuritySelection(
+            picks=[SecurityPick(index=v["index"], summary="Corriger.") for v in json.loads(prompt)]
+        )
+
     return FakeLLM(
         {
             ExtensionVerdicts: extensions,
+            SecuritySelection: security,
             PaperScoreBatch: scores,
             PaperWriteupBatch: writeups,
             NewsSelection: news,

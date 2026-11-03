@@ -74,6 +74,13 @@ class ExtensionSettings(_Strict):
     mcp_topics: list[str] = Field(default_factory=lambda: ["mcp-server"])
 
 
+class SecuritySettings(_Strict):
+    """Exploited flaws (CISA KEV, all listed) and critical GitHub advisories."""
+
+    max_items: int = Field(default=5, gt=0)
+    max_candidates: int = Field(default=40, gt=0)
+
+
 class Settings(_Strict):
     language: Language = "fr"
     llm: LLMSettings = Field(default_factory=LLMSettings)
@@ -82,6 +89,7 @@ class Settings(_Strict):
     devtools: DevToolsSettings = Field(default_factory=DevToolsSettings)
     repos: RepoSettings = Field(default_factory=RepoSettings)
     extensions: ExtensionSettings = Field(default_factory=ExtensionSettings)
+    security: SecuritySettings = Field(default_factory=SecuritySettings)
     history_path: Path = Path("state/history.json")
     archive_dir: Path = Path("archive")
 

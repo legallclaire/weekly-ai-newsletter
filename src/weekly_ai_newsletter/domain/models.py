@@ -125,6 +125,27 @@ class CuratedExtension:
 
 
 @dataclass(frozen=True)
+class Vulnerability:
+    """A published vulnerability; `id` is its CVE when it has one."""
+
+    id: str
+    title: str
+    description: str
+    url: str
+    affected: str
+    exploited: bool
+    fixed_in: str = ""
+
+
+@dataclass(frozen=True)
+class SecurityAlert:
+    """A vulnerability in the security section; exploited ones may come without a summary."""
+
+    vulnerability: Vulnerability
+    summary: str = ""
+
+
+@dataclass(frozen=True)
 class OutgoingEmail:
     sender: str
     recipient: str

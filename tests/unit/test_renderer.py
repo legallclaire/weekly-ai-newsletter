@@ -1,13 +1,14 @@
 import re
 from datetime import date
 
-from tests.factories import make_extension, make_paper, make_repo, make_score
+from tests.factories import make_extension, make_paper, make_repo, make_score, make_vulnerability
 from weekly_ai_newsletter.domain.models import (
     CuratedExtension,
     CuratedRepo,
     DevToolChange,
     DevToolGroup,
     NewsItem,
+    SecurityAlert,
     SelectedPaper,
 )
 from weekly_ai_newsletter.domain.newsletter import Newsletter, Section
@@ -23,11 +24,28 @@ PAPER = SelectedPaper(
 )
 
 
+SECURITY = [
+    SecurityAlert(
+        make_vulnerability(
+            "GHSA-aaaa-bbbb-cccc",
+            exploited=False,
+            title="Sandbox <escape>",
+            affected="npm @acme/elo <= 1.0.0",
+            fixed_in="1.0.1",
+        ),
+        "Mettre à jour `@acme/elo`.",
+    ),
+    SecurityAlert(make_vulnerability("CVE-2026-1001", affected="WordPress Core"), "Exploitée."),
+    SecurityAlert(make_vulnerability("CVE-2026-1002", affected="Acme VPN", title="Auth bypass")),
+]
+
+
 def newsletter(
     language: str = "fr",
     *,
     papers: Section[SelectedPaper] | None = None,
     repos: Section[CuratedRepo] | None = None,
+    security: Section[SecurityAlert] | None = None,
 ) -> Newsletter:
     change = DevToolChange("v2.1.0", "https://gh.example/r", "Hooks.")
     repo = CuratedRepo(make_repo("acme/agent-kit", stars_this_week=2345), "Utile.")
@@ -46,6 +64,7 @@ def newsletter(
                 ),
             ]
         ),
+        security=security if security is not None else Section.ok(SECURITY),
     )
 
 
@@ -127,6 +146,7 @@ def test_inline_code_in_summaries_renders_as_code_in_html() -> None:
             papers=base.papers,
             repos=base.repos,
             extensions=base.extensions,
+            security=base.security,
         )
     )
     assert "<code" in rendered.html and "/security-review</code>" in rendered.html
@@ -146,3 +166,30 @@ def test_english_output_has_no_space_before_punctuation() -> None:
     rendered = NewsletterRenderer().render(newsletter(language="en"))
     for text in (rendered.text, rendered.html):
         assert not re.search("[ \u00a0\u202f][:;!?]", text)
+
+
+def test_security_section_comes_last_with_highlights_then_a_brief_list() -> None:
+    rendered = NewsletterRenderer().render(newsletter())
+    html, text = rendered.html, rendered.text
+    assert html.index("⚠️ Sécurité") > html.index("Skills &amp; plugins")
+    assert "## ⚠️ Sécurité" in text
+    assert "Sandbox &lt;escape&gt;" in html and "/@acme/elo</code>" not in html
+    assert "<code" in html and "@acme/elo</code>" in html
+    assert "https://github.com/advisories/GHSA-aaaa-bbbb-cccc" not in html  # factory uses NVD
+    assert "https://nvd.nist.gov/vuln/detail/GHSA-aaaa-bbbb-cccc" in html
+    assert "Corrigé en 1.0.1" in text
+    assert "Exploitée activement" in text
+    brief = text.split("Aussi exploitées cette semaine :")[1]
+    assert "CVE-2026-1002" in brief and "Acme VPN" in brief and "Auth bypass" in brief
+    assert "CVE-2026-1001" not in brief
+
+
+def test_security_brief_list_is_omitted_when_every_flaw_is_highlighted() -> None:
+    rendered = NewsletterRenderer().render(newsletter(security=Section.ok(SECURITY[:2])))
+    assert "Aussi exploitées" not in rendered.html + rendered.text
+
+
+def test_security_section_in_english() -> None:
+    text = NewsletterRenderer().render(newsletter(language="en")).text
+    assert "## ⚠️ Security" in text and "Fixed in 1.0.1" in text
+    assert "Also exploited this week:" in text and "Actively exploited" in text
