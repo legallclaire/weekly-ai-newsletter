@@ -1,15 +1,20 @@
 {
   "devtools": {
     "https://github.blog/changelog/2026-10-28-github-enterprise-now-includes-access-to-github-copilot": "2026-11-03",
+    "https://github.blog/changelog/2026-11-03-dependabot-version-updates-support-agent-package-manager": "2026-11-04",
     "https://github.com/anthropics/claude-code/releases/tag/v2.1.312": "2026-11-03",
     "https://github.com/anthropics/claude-code/releases/tag/v2.1.314": "2026-11-03",
     "https://github.com/anthropics/claude-code/releases/tag/v2.1.316": "2026-11-03",
+    "https://github.com/anthropics/claude-code/releases/tag/v2.1.317": "2026-11-04",
     "https://github.com/openai/codex/releases/tag/rust-v0.165.0": "2026-11-03",
     "https://github.com/openai/codex/releases/tag/rust-v0.166.0": "2026-11-03"
   },
   "extensions": {
+    "MiniMax-AI/mcode-stack": "2026-11-04",
     "caru-ini/stack-diagram": "2026-11-03",
     "daveebbelaar/bama": "2026-11-03",
+    "emanuele-em/kanzo": "2026-11-04",
+    "hanzohanzhe/Grandet": "2026-11-04",
     "haydenschmitty/floorplan": "2026-11-03",
     "morganlinton/BeautifulRust": "2026-11-03",
     "reason-machines/reason-network": "2026-11-03"
@@ -20,18 +25,41 @@
     "https://huggingface.co/blog/mistral-large4": "2026-11-03",
     "https://openai.com/index/helping-websites-express-ai-training-preferences": "2026-11-03",
     "https://openai.com/index/how-we-detect-frontier-model-misalignment": "2026-11-03",
-    "https://simonwillison.net/2026/Oct/28/github-octoverse-2026/": "2026-11-03"
+    "https://openai.com/index/updated-model-spec": "2026-11-04",
+    "https://simonwillison.net/2026/Nov/3/qwen-can-interpret-model-weights/": "2026-11-04",
+    "https://simonwillison.net/2026/Oct/28/github-octoverse-2026/": "2026-11-03",
+    "https://simonwillison.net/2026/Oct/28/vibe-game-development/": "2026-11-04",
+    "https://simonwillison.net/2026/Oct/31/how-we-took-over-chatgpt-accounts/": "2026-11-04",
+    "https://www.technologyreview.com/2026/10/29/1147824/monitor-ai-agents-actions-real-time/": "2026-11-04",
+    "https://www.technologyreview.com/2026/11/02/1147932/heres-who-is-falling-in-line-for-trumps-super-intelligence-loyalty-test/": "2026-11-04"
   },
   "papers": {
+    "2610.37080": "2026-11-04",
     "2610.37648": "2026-11-03",
     "2610.41172": "2026-11-03",
+    "2610.41508": "2026-11-04",
+    "2610.41803": "2026-11-04",
     "2611.00391": "2026-11-03"
   },
   "repos": {
+    "AstrBotDevs/AstrBot": "2026-11-04",
     "Graphify-Labs/graphify": "2026-11-03",
+    "TauricResearch/TradingAgents": "2026-11-04",
     "affaan-m/ECC": "2026-11-03",
+    "anthropics/skills": "2026-11-04",
+    "beenuar/AiSOC": "2026-11-04",
+    "calesthio/OpenMontage": "2026-11-04",
     "cloudflare/security-audit-skill": "2026-11-03",
     "obra/superpowers": "2026-11-03",
     "thedotmack/claude-mem": "2026-11-03"
+  },
+  "security": {
+    "CVE-2026-111357": "2026-11-04",
+    "CVE-2026-118527": "2026-11-04",
+    "CVE-2026-119977": "2026-11-04",
+    "CVE-2026-41709": "2026-11-04",
+    "CVE-2026-46300": "2026-11-04",
+    "CVE-2026-76418": "2026-11-04",
+    "CVE-2026-97229": "2026-11-04"
   }
 }
